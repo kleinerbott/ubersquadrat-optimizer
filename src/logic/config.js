@@ -31,32 +31,6 @@ export const CONFIG = {
   START_MARKER_COLOR: '#00cc00',
   START_MARKER_RADIUS: 8,
   MAX_ROUTE_WAYPOINTS: 50,
-  MAX_WAYPOINT_MARKERS: 30,    // Maximum waypoints before hiding markers
-  BROUTER_API_URL: 'https://brouter.de/brouter',
-
-  // DOM Element IDs
-  DOM_IDS: {
-    KML_SELECT: 'kmlSelect',
-    OPTIMIZE_BTN: 'optimizeBtn',
-    NUM_ADD: 'numAdd',
-    DIRECTION_BTN_N: 'directionBtnN',
-    DIRECTION_BTN_S: 'directionBtnS',
-    DIRECTION_BTN_E: 'directionBtnE',
-    DIRECTION_BTN_W: 'directionBtnW',
-    DIRECTION_BTN_ALL: 'directionBtnAll',
-    OPTIMIZATION_MODE: 'optimizationMode',
-    MAX_HOLE_SIZE: 'maxHoleSize',
-    BIKE_TYPE: 'bikeType',
-    ROUNDTRIP: 'roundtrip',
-    SELECT_START_BTN: 'selectStartBtn',
-    START_POINT_STATUS: 'startPointStatus',
-    CALCULATE_ROUTE_BTN: 'calculateRouteBtn',
-    ROUTE_DISTANCE: 'routeDistance',
-    ROUTE_ELEVATION: 'routeElevation',
-    ROUTE_TIME: 'routeTime',
-    ROUTE_STATS: 'routeStats',
-    ROUTE_EXPORT: 'routeExport',
-    EXPORT_GPX_BTN: 'exportGpxBtn',
-    EXPORT_KML_BTN: 'exportKmlBtn'
-  }
+  MAX_WAYPOINT_MARKERS: 30,
+  BROUTER_API_URL: 'https://brouter.de/brouter'
 };

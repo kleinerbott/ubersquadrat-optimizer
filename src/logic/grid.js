@@ -3,6 +3,7 @@
  * Handles grid calculations, cell scanning, and grid visualization
  */
 
+import L from 'leaflet';
 import { CONFIG } from './config.js';
 import { calculateBounds, isPointInPolygonWithHoles } from './kml-processor.js';
 
