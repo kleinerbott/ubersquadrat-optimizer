@@ -11,7 +11,7 @@ export const CONFIG = {
 
   // Grid Line Styling
   GRID_LINE_COLOR: '#555555',     // Horizontal grid lines
-  GRID_LINE_OPACITY: 1,
+  GRID_LINE_OPACITY: 0.6,
   GRID_VERTICAL_COLOR: '#888888', // Vertical grid lines (lighter)
   GRID_VERTICAL_OPACITY: 0.3,
 
