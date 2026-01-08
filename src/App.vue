@@ -5,9 +5,15 @@ import AppSidebar from './components/AppSidebar.vue';
 
 // Map component reference for imperative calls
 const mapRef = ref(null);
+const sidebarRef = ref(null);
 
 // Provide map ref to child components
 provide('mapRef', mapRef);
+
+// Toggle sidebar
+function toggleSidebar() {
+  sidebarRef.value?.toggle();
+}
 
 /**
  * Handle optimization results - show squares on map
@@ -43,9 +49,21 @@ function handleKmlLoaded(data) {
     <v-main class="app-main">
       <LeafletMap ref="mapRef" />
       <AppSidebar
+        ref="sidebarRef"
         @optimized="handleOptimized"
         @route-calculated="handleRouteCalculated"
         @kml-loaded="handleKmlLoaded"
+      />
+
+      <!-- Floating Menu Button -->
+      <v-btn
+        icon="mdi-menu"
+        color="primary"
+        size="large"
+        class="menu-fab"
+        @click="toggleSidebar"
+        elevation="8"
+        aria-label="Menü öffnen"
       />
     </v-main>
   </v-app>
@@ -66,5 +84,12 @@ html, body {
 .app-main {
   display: flex;
   height: 100vh;
+}
+
+.menu-fab {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 999;
 }
 </style>

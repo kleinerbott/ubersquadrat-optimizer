@@ -16,8 +16,6 @@ import { calculateBounds, isPointInPolygonWithHoles } from './kml-processor.js';
  * @returns {Object} Grid parameters including steps, origin, bounds, and baseSquare indices
  */
 export function calculateGridParameters(uberCoords, uberSize) {
-  console.log('Ubersquadrat size:', uberSize, 'x', uberSize, 'squadrats');
-
   // Calculate ubersquadrat bounds
   const uberBounds = calculateBounds(uberCoords);
   const { minLat: uberMinLat, maxLat: uberMaxLat, minLon: uberMinLon, maxLon: uberMaxLon } = uberBounds;
@@ -26,12 +24,9 @@ export function calculateGridParameters(uberCoords, uberSize) {
   const latStep = (uberMaxLat - uberMinLat) / uberSize;
   const lonStep = (uberMaxLon - uberMinLon) / uberSize;
 
-  console.log('Grid steps from ubersquadrat:', 'LAT=', latStep.toFixed(7), 'LON=', lonStep.toFixed(7));
-
   // Set grid origin to ubersquadrat SW corner
   const originLat = uberMinLat;
   const originLon = uberMinLon;
-  console.log('Grid origin (ubersquadrat SW corner):', originLat.toFixed(7), originLon.toFixed(7));
 
   // Ubersquadrat grid indices - since origin is at ubersquadrat SW corner
   const baseSquare = {
@@ -40,8 +35,6 @@ export function calculateGridParameters(uberCoords, uberSize) {
     minJ: 0,
     maxJ: uberSize - 1
   };
-
-  console.log('Ubersquadrat grid: i=[', baseSquare.minI, 'to', baseSquare.maxI, '], j=[', baseSquare.minJ, 'to', baseSquare.maxJ, ']');
 
   return {
     latStep,
@@ -64,15 +57,11 @@ export function scanAndBuildVisitedSet(allPolygons, baseSquare, gridParams) {
   const visitedSet = new Set();
   const { latStep, lonStep, originLat, originLon } = gridParams;
 
-  console.log('Starting grid-based scan of', allPolygons.length, 'polygons...');
-
   // Define scan area for new squares
   const scanMinI = baseSquare.minI - CONFIG.SCAN_RADIUS_RANGE;
   const scanMaxI = baseSquare.maxI + CONFIG.SCAN_RADIUS_RANGE;
   const scanMinJ = baseSquare.minJ - CONFIG.SCAN_RADIUS_RANGE;
   const scanMaxJ = baseSquare.maxJ + CONFIG.SCAN_RADIUS_RANGE;
-
-  console.log('Scanning grid area: i=[', scanMinI, 'to', scanMaxI, '], j=[', scanMinJ, 'to', scanMaxJ, ']');
 
   let gridCellsChecked = 0;
   let gridCellsMarked = 0;
@@ -103,9 +92,6 @@ export function scanAndBuildVisitedSet(allPolygons, baseSquare, gridParams) {
     }
   }
 
-  console.log('Grid scan complete:', gridCellsChecked, 'cells checked,', gridCellsMarked, 'cells marked as visited');
-  console.log('Visited set size:', visitedSet.size);
-
   return visitedSet;
 }
 
@@ -125,10 +111,6 @@ export function visualizeUbersquadrat(baseSquare, gridParams, visitedLayer) {
   const gridAlignedMaxLat = originLat + (baseSquare.maxI + 1) * latStep;
   const gridAlignedMinLon = originLon + baseSquare.minJ * lonStep;
   const gridAlignedMaxLon = originLon + (baseSquare.maxJ + 1) * lonStep;
-
-  console.log('Blue rectangle grid-aligned coords:',
-    '[', gridAlignedMinLat.toFixed(6), ',', gridAlignedMinLon.toFixed(6), '] to',
-    '[', gridAlignedMaxLat.toFixed(6), ',', gridAlignedMaxLon.toFixed(6), ']');
 
   L.rectangle(
     [[gridAlignedMinLat, gridAlignedMinLon], [gridAlignedMaxLat, gridAlignedMaxLon]],
@@ -182,6 +164,4 @@ export function drawGridLines(baseSquare, gridParams, gridLayer) {
       opacity: CONFIG.GRID_VERTICAL_OPACITY
     }).addTo(gridLayer);
   }
-
-  console.log('Grid drawn:', (gridMaxI - gridMinI + 2), 'horizontal lines,', (gridMaxJ - gridMinJ + 2), 'vertical lines');
 }

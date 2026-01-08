@@ -38,7 +38,7 @@ function toggleAll() {
         :key="dir"
         :color="isSelected(dir) ? 'primary' : 'default'"
         :variant="isSelected(dir) ? 'flat' : 'outlined'"
-        size="small"
+        size="default"
         class="direction-btn"
         @click="toggleDirection(dir)"
       >
@@ -47,7 +47,7 @@ function toggleAll() {
       <v-btn
         :color="allSelected ? 'primary' : 'default'"
         :variant="allSelected ? 'flat' : 'outlined'"
-        size="small"
+        size="default"
         class="direction-btn"
         @click="toggleAll"
       >
@@ -60,11 +60,13 @@ function toggleAll() {
 <style scoped>
 .direction-buttons {
   display: flex;
-  gap: 4px;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .direction-btn {
   flex: 1;
-  min-width: 0;
+  min-width: 50px;
+  min-height: 44px;
 }
 </style>

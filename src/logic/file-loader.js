@@ -113,9 +113,8 @@ function saveToCache(filename, content) {
   try {
     localStorage.setItem(STORAGE_KEY_FILENAME, filename);
     localStorage.setItem(STORAGE_KEY_CONTENT, content);
-    console.log(`Cached KML file: ${filename} (${(content.length / 1024).toFixed(1)} KB)`);
   } catch (error) {
-    console.warn('Failed to cache KML in LocalStorage:', error);
+    // Silent fail
   }
 }
 
@@ -129,11 +128,10 @@ export function loadCachedKml() {
     const content = localStorage.getItem(STORAGE_KEY_CONTENT);
 
     if (filename && content) {
-      console.log(`Loaded cached KML: ${filename} (${(content.length / 1024).toFixed(1)} KB)`);
       return { filename, content };
     }
   } catch (error) {
-    console.warn('Failed to load cached KML:', error);
+    // Silent fail
   }
 
   return null;
@@ -146,9 +144,8 @@ export function clearCache() {
   try {
     localStorage.removeItem(STORAGE_KEY_FILENAME);
     localStorage.removeItem(STORAGE_KEY_CONTENT);
-    console.log('Cleared KML cache');
   } catch (error) {
-    console.warn('Failed to clear cache:', error);
+    // Silent fail
   }
 }
 

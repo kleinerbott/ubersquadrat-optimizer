@@ -91,6 +91,7 @@ async function handleCalculateRoute() {
     <!-- Select start point button -->
     <v-btn
       block
+      size="large"
       :color="routing.selectingStartPoint ? 'error' : 'secondary'"
       :variant="routing.selectingStartPoint ? 'flat' : 'outlined'"
       prepend-icon="mdi-map-marker"
@@ -108,6 +109,7 @@ async function handleCalculateRoute() {
     <!-- Calculate route button -->
     <v-btn
       block
+      size="large"
       color="success"
       :disabled="!canCalculateRoute || calculating"
       :loading="calculating"

@@ -98,6 +98,7 @@ function handleOptimize() {
     <!-- Optimize button -->
     <v-btn
       block
+      size="large"
       color="primary"
       :disabled="!isReady || kmlLoading"
       :loading="kmlLoading"

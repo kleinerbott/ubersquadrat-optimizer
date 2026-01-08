@@ -60,7 +60,6 @@ export function isPointInPolygonWithHoles(lat, lon, polygon) {
     return turf.booleanPointInPolygon(point, turfPolygon);
   } catch (e) {
     // Fallback for invalid polygons
-    console.warn('Invalid polygon geometry:', e.message);
     return false;
   }
 }

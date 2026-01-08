@@ -9,6 +9,12 @@ import * as turf from '@turf/turf';
 import { solveTSP } from './tsp-solver.js';
 import { fetchRoadsInArea } from './road-fetcher.js';
 import { optimizeWaypoints, calculateCombinedBounds } from './waypoint-optimizer.js';
+import {
+  SimplificationStrategy,
+  tryProfilesWithFallback,
+  createMinimalWaypoints,
+  isCoverageError
+} from './routing-strategies.js';
 
 /**
  * Extract proposed squares from Leaflet layer
@@ -60,17 +66,6 @@ export async function callBRouterAPI(waypoints, profile, apiUrl = 'https://brout
   // Build URL with parameters
   const url = `${apiUrl}?lonlats=${lonlats}&profile=${profile}&alternativeidx=0&format=geojson`;
 
-  console.log(`\n=== BROUTER API CALL ===`);
-  console.log(`Profile: ${profile}`);
-  console.log(`Waypoints: ${waypoints.length}`);
-  console.log(`\nWaypoint details:`);
-  waypoints.forEach((wp, i) => {
-    console.log(`  ${i}: [${wp.lat.toFixed(6)}, ${wp.lon.toFixed(6)}] type=${wp.type || 'unknown'}, hasRoad=${wp.hasRoad !== false}`);
-  });
-  console.log(`\nBRouter URL (first 200 chars): ${url.substring(0, 200)}...`);
-  console.log(`Note: BRouter public instance has best coverage for Central Europe.`);
-  console.log(`========================\n`);
-
   try {
     const response = await fetch(url);
 
@@ -101,10 +96,8 @@ export async function callBRouterAPI(waypoints, profile, apiUrl = 'https://brout
       throw new Error('BRouter returned no route');
     }
 
-    console.log('BRouter API success:', data);
     return data;
   } catch (error) {
-    console.error('BRouter API call failed:', error);
     throw error;
   }
 }
@@ -152,40 +145,6 @@ export function parseBRouterResponse(geojson) {
 }
 
 /**
- * Simplify waypoints by removing intermediate points that are very close together
- * This helps avoid BRouter waypoint limits and coverage issues
- * Uses Turf.js distance calculation for accuracy
- *
- * @param {Array} waypoints - Array of {lat, lon} waypoints
- * @param {number} minDistance - Minimum distance between waypoints in km (default 0.5 km)
- * @returns {Array} Simplified waypoint array
- */
-function simplifyWaypoints(waypoints, minDistance = 0.5) {
-  if (waypoints.length <= 2) return waypoints;
-
-  const simplified = [waypoints[0]]; // Always keep start point
-  let lastKept = waypoints[0];
-
-  for (let i = 1; i < waypoints.length - 1; i++) {
-    // Use Turf.js for accurate geodesic distance calculation
-    const from = turf.point([lastKept.lon, lastKept.lat]);
-    const to = turf.point([waypoints[i].lon, waypoints[i].lat]);
-    const distance = turf.distance(from, to, { units: 'kilometers' });
-
-    // Keep waypoint if far enough from last kept point
-    if (distance >= minDistance) {
-      simplified.push(waypoints[i]);
-      lastKept = waypoints[i];
-    }
-  }
-
-  // Always keep end point
-  simplified.push(waypoints[waypoints.length - 1]);
-
-  return simplified;
-}
-
-/**
  * Main function: Calculate optimal route through proposed squares
  *
  * @param {L.LayerGroup} proposedLayer - Layer with proposed squares
@@ -203,41 +162,24 @@ export async function calculateRoute(proposedLayer, startPoint, bikeType, roundt
     throw new Error('Keine vorgeschlagenen Quadrate zum Routen vorhanden');
   }
 
-  console.log(`Routing through ${squares.length} proposed squares`);
-
   // Step 2: Fetch roads for the area (road-aware routing)
   let optimizedWaypoints;
   let roadFetchFailed = false;
 
   try {
-    // Calculate bounds for all squares
-    const squareBounds = squares.map(s => ({
-      south: s.bounds.south,
-      north: s.bounds.north,
-      west: s.bounds.west,
-      east: s.bounds.east
-    }));
-    const combinedBounds = calculateCombinedBounds(squareBounds);
+    // Calculate combined bounds for all squares
+    const combinedBounds = calculateCombinedBounds(squares.map(s => s.bounds));
 
-    console.log('Fetching roads for bike type:', bikeType);
     const roads = await fetchRoadsInArea(combinedBounds, bikeType);
 
     if (roads.length > 0) {
       // Step 3: Optimize waypoints using road data
-      const optimization = optimizeWaypoints(squareBounds, roads);
+      const optimization = optimizeWaypoints(squares, roads);
       optimizedWaypoints = optimization.waypoints;
-
-      console.log(`Road-aware optimization: ${optimization.statistics.withRoads}/${optimization.statistics.total} squares have suitable roads`);
-
-      if (optimization.skippedSquares.length > 0) {
-        console.warn(`Warning: ${optimization.skippedSquares.length} squares have no ${bikeType}-suitable roads`);
-      }
     } else {
-      console.warn('No roads found in area, falling back to center points');
       roadFetchFailed = true;
     }
   } catch (error) {
-    console.warn('Road fetch failed, falling back to center points:', error.message);
     roadFetchFailed = true;
   }
 
@@ -254,160 +196,68 @@ export async function calculateRoute(proposedLayer, startPoint, bikeType, roundt
 
   // Step 4: Solve TSP to get optimal order
   const waypointCoords = optimizedWaypoints.map(wp => ({ lat: wp.lat, lon: wp.lon, type: wp.type, hasRoad: wp.hasRoad }));
-  const tspResult = solveTSP(waypointCoords, startPoint, roundtrip, true);
+  const tspResult = solveTSP(waypointCoords, startPoint, roundtrip);
 
-  console.log(`\n=== TSP OPTIMIZATION ===`);
-  console.log(`TSP result: ${tspResult.route.length} waypoints, ${tspResult.distance.toFixed(2)} km straight-line distance`);
-  console.log(`Waypoint types in route: ${optimizedWaypoints.filter(wp => wp.type === 'intersection').length} intersections, ${optimizedWaypoints.filter(wp => wp.type === 'midpoint').length} midpoints, ${optimizedWaypoints.filter(wp => wp.type === 'nearest').length} nearest, ${optimizedWaypoints.filter(wp => wp.type === 'center-fallback' || wp.type === 'no-road').length} fallback`);
-
-  console.log(`\nTSP-ordered waypoints:`);
-  tspResult.route.forEach((wp, i) => {
-    console.log(`  ${i}: [${wp.lat.toFixed(6)}, ${wp.lon.toFixed(6)}] type=${wp.type || 'unknown'}, hasRoad=${wp.hasRoad !== false}`);
-  });
-  console.log(`========================\n`);
-
-  // Step 5: Simplify waypoints if too many or too close together
-  let finalWaypoints = tspResult.route;
-  let simplificationLevel = 0;
-
-  if (tspResult.route.length > 20) {
-    finalWaypoints = simplifyWaypoints(tspResult.route, 0.5);
-    simplificationLevel = 1;
-    console.log(`Waypoints simplified (level 1): ${tspResult.route.length} → ${finalWaypoints.length}`);
-  }
-
-  // Step 6: Check waypoint limit
-  if (finalWaypoints.length > 50) {
-    console.warn(`Route has ${finalWaypoints.length} waypoints, BRouter limit is ~60. May fail.`);
-  }
-
-  // Helper function for more aggressive simplification if needed
-  const tryMoreAggressive = () => {
-    if (simplificationLevel === 0) {
-      finalWaypoints = simplifyWaypoints(tspResult.route, 1.0);
-      simplificationLevel = 2;
-      console.log(`Waypoints simplified (level 2 - aggressive): ${tspResult.route.length} → ${finalWaypoints.length}`);
-    } else if (simplificationLevel === 1) {
-      finalWaypoints = simplifyWaypoints(tspResult.route, 1.5);
-      simplificationLevel = 3;
-      console.log(`Waypoints simplified (level 3 - very aggressive): ${tspResult.route.length} → ${finalWaypoints.length}`);
-    }
-    return finalWaypoints;
+  // Helper function to build route response
+  const buildRouteResponse = (result, waypoints, options = {}) => {
+    const routeData = parseBRouterResponse(result.geojson);
+    return {
+      ...routeData,
+      waypoints,
+      allSquares: tspResult.route,
+      straightLineDistance: tspResult.distance,
+      profileUsed: result.profile,
+      roadAware: options.roadAware ?? !roadFetchFailed,
+      simplified: options.simplified ?? false,
+      minimal: options.minimal ?? false
+    };
   };
 
-  // Step 7: Call BRouter API with fallback profiles
+  // Step 5: Initialize simplification strategy
+  const simplification = new SimplificationStrategy(tspResult.route);
+  let finalWaypoints = tspResult.route;
+
+  if (tspResult.route.length > 20) {
+    finalWaypoints = simplification.nextLevel().waypoints;
+  }
+
+  // Step 6: Define profile fallback order
   const profileFallbacks = {
     'trekking': ['fastbike', 'trekking-ignore-cr', 'trekking-noferries'],
     'gravel': ['trekking', 'fastbike'],
     'fastbike': ['trekking', 'fastbike-lowtraffic']
   };
-
-  let lastError = null;
   const profilesToTry = [bikeType, ...(profileFallbacks[bikeType] || [])];
-  let profileAttempts = 0;
 
-  for (const profile of profilesToTry) {
-    profileAttempts++;
-    try {
-      console.log(`Trying profile: ${profile} (attempt ${profileAttempts}/${profilesToTry.length})`);
-      const geojson = await callBRouterAPI(finalWaypoints, profile, apiUrl);
+  // Step 7: Strategy 1 - Try all profiles with current waypoints
+  let result = await tryProfilesWithFallback(profilesToTry, finalWaypoints, apiUrl);
 
-      // Step 8: Parse response
-      const routeData = parseBRouterResponse(geojson);
+  if (result.success) {
+    return buildRouteResponse(result, finalWaypoints);
+  }
 
-      if (profile !== bikeType) {
-        console.warn(`Routing succeeded with fallback profile: ${profile} (requested: ${bikeType})`);
-      }
+  // Step 8: Strategy 2 - If coverage error, try with more aggressive simplification
+  if (isCoverageError(result.error) && simplification.hasMoreLevels()) {
+    finalWaypoints = simplification.nextLevel().waypoints;
+    result = await tryProfilesWithFallback(profilesToTry, finalWaypoints, apiUrl);
 
-      return {
-        ...routeData,
-        waypoints: finalWaypoints,
-        allSquares: tspResult.route, // Keep all squares for reference
-        straightLineDistance: tspResult.distance,
-        profileUsed: profile,
-        roadAware: !roadFetchFailed
-      };
-    } catch (error) {
-      lastError = error;
-      console.warn(`Profile ${profile} failed:`, error.message);
-
-      // If this is a data coverage error, try more aggressive simplification before next profile
-      if ((error.message.includes('nicht verfügbaren Kartenbereichs') ||
-           error.message.includes('not mapped')) &&
-          simplificationLevel < 3) {
-        console.log('Trying more aggressive waypoint simplification...');
-        finalWaypoints = tryMoreAggressive();
-
-        // Retry the same profile with simplified waypoints
-        try {
-          console.log(`Retrying profile: ${profile} with ${finalWaypoints.length} waypoints`);
-          const geojson = await callBRouterAPI(finalWaypoints, profile, apiUrl);
-          const routeData = parseBRouterResponse(geojson);
-
-          console.warn(`Routing succeeded after simplification with profile: ${profile}`);
-
-          return {
-            ...routeData,
-            waypoints: finalWaypoints,
-            allSquares: tspResult.route,
-            straightLineDistance: tspResult.distance,
-            profileUsed: profile,
-            roadAware: !roadFetchFailed
-          };
-        } catch (retryError) {
-          console.warn(`Retry with simplified waypoints also failed:`, retryError.message);
-          lastError = retryError;
-        }
-      }
-
-      // If not a data coverage error, don't retry with different profiles
-      if (!error.message.includes('nicht verfügbaren Kartenbereichs') &&
-          !error.message.includes('not mapped')) {
-        break;
-      }
+    if (result.success) {
+      return buildRouteResponse(result, finalWaypoints, { simplified: true });
     }
   }
 
-  // All profiles failed - try one last strategy: remove middle waypoints
+  // Step 9: Strategy 3 - Final fallback with minimal waypoints
   if (finalWaypoints.length > 3) {
-    console.warn('All profiles failed. Last attempt: removing some middle waypoints to create a simpler route...');
+    const minimalWaypoints = createMinimalWaypoints(finalWaypoints);
+    result = await tryProfilesWithFallback([bikeType], minimalWaypoints, apiUrl);
 
-    // Keep only start, end, and every 2nd or 3rd waypoint
-    const minimalWaypoints = [finalWaypoints[0]]; // Start
-    const step = Math.ceil((finalWaypoints.length - 2) / Math.min(8, finalWaypoints.length - 2));
-
-    for (let i = step; i < finalWaypoints.length - 1; i += step) {
-      minimalWaypoints.push(finalWaypoints[i]);
-    }
-
-    minimalWaypoints.push(finalWaypoints[finalWaypoints.length - 1]); // End
-
-    console.log(`Minimal route attempt: ${finalWaypoints.length} → ${minimalWaypoints.length} waypoints`);
-
-    // Try with the first (requested) profile only
-    try {
-      const geojson = await callBRouterAPI(minimalWaypoints, bikeType, apiUrl);
-      const routeData = parseBRouterResponse(geojson);
-
-      console.warn(`Routing succeeded with minimal waypoints strategy (${minimalWaypoints.length} waypoints)`);
-
-      return {
-        ...routeData,
-        waypoints: minimalWaypoints,
-        allSquares: tspResult.route,
-        straightLineDistance: tspResult.distance,
-        profileUsed: bikeType,
-        simplified: true,
-        roadAware: !roadFetchFailed
-      };
-    } catch (minimalError) {
-      console.error('Even minimal route failed:', minimalError);
+    if (result.success) {
+      return buildRouteResponse(result, minimalWaypoints, { simplified: true, minimal: true });
     }
   }
 
-  // Truly failed
-  console.error('All routing strategies exhausted:', lastError);
-  throw new Error(`Routing fehlgeschlagen nach ${profileAttempts} Versuchen mit allen Strategien. Möglicherweise liegen einige Quadrate außerhalb der verfügbaren Routingdaten. Versuchen Sie es mit weniger Quadraten (< 15).`);
+  // All strategies exhausted
+  throw new Error(`Routing fehlgeschlagen nach allen Strategien: ${result.error.message}. Möglicherweise liegen einige Quadrate außerhalb der verfügbaren Routingdaten. Versuchen Sie es mit weniger Quadraten (< 15).`);
 }
 
 /**

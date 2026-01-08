@@ -3,6 +3,8 @@
  * Fetches road data from Overpass API with bike-type specific filters
  */
 
+import { normalizeBounds, expandBounds } from './bounds-utils.js';
+
 const ROAD_FILTERS = {
   fastbike: {
     highways: 'primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|residential|living_street|unclassified',
@@ -49,7 +51,7 @@ function buildOverpassQuery(bounds, bikeType) {
      (${bbox});
 
   // Major roads (primary/secondary) without bad surface tags (assumed paved)
-  way["highway"~"^(primary|primary_link|secondary|secondary_link|tertiary|tertiary_link)$"]
+  way["highway"~"^(primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|unclassified)$"]
      ["bicycle"!="no"]
      ["access"!="private"]
      ["motor_vehicle"!="designated"]
@@ -123,21 +125,9 @@ function overpassToGeoJSON(overpassData) {
  * @returns {Promise<Array>} Array of GeoJSON road features
  */
 export async function fetchRoadsInArea(bounds, bikeType = 'trekking', maxRetries = 2) {
-  // Normalize bounds format
-  const normalizedBounds = {
-    south: bounds.south ?? bounds.minLat,
-    north: bounds.north ?? bounds.maxLat,
-    west: bounds.west ?? bounds.minLon,
-    east: bounds.east ?? bounds.maxLon
-  };
-
-  // Add small buffer to bounds (0.01 degrees ~ 1km)
-  const bufferedBounds = {
-    south: normalizedBounds.south - 0.01,
-    north: normalizedBounds.north + 0.01,
-    west: normalizedBounds.west - 0.01,
-    east: normalizedBounds.east + 0.01
-  };
+  // Normalize bounds format and add buffer (0.01 degrees ~ 1km)
+  const normalizedBounds = normalizeBounds(bounds);
+  const bufferedBounds = expandBounds(normalizedBounds, 0.01);
 
   const query = buildOverpassQuery(bufferedBounds, bikeType);
 

@@ -35,7 +35,15 @@ onUnmounted(() => {
  * Initialize Leaflet map with Layer and click handler
  */
 function initializeMap() {
-  map = L.map(mapContainer.value).setView([51.7, 8.3], 10);
+  map = L.map(mapContainer.value, {
+    // Touch interaction settings for mobile
+    tap: true,                // Enable tap events on mobile
+    tapTolerance: 15,         // Pixel tolerance for tap events
+    touchZoom: true,          // Pinch to zoom
+    bounceAtZoomLimits: true, // Bounce effect when zooming at limits
+    dragging: true,           // Touch drag
+    zoomControl: true         // Show zoom buttons (helpful on mobile)
+  }).setView([51.7, 8.3], 10);
 
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'

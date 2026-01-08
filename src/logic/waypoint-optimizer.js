@@ -4,6 +4,7 @@
  */
 
 import * as turf from '@turf/turf';
+import { normalizeBounds, combineBounds, boundsToMinMax } from './bounds-utils.js';
 
 /**
  * Create a Turf.js polygon from square bounds
@@ -11,23 +12,7 @@ import * as turf from '@turf/turf';
  * @returns {Feature<Polygon>}
  */
 function squareToPolygon(square) {
-  let bounds;
-
-  // Handle different square formats
-  if (Array.isArray(square)) {
-    // Format: [[south, west], [north, east]]
-    bounds = {
-      south: square[0][0],
-      west: square[0][1],
-      north: square[1][0],
-      east: square[1][1]
-    };
-  } else if (square.bounds) {
-    bounds = square.bounds;
-  } else {
-    bounds = square;
-  }
-
+  const bounds = normalizeBounds(square);
   return turf.bboxPolygon([bounds.west, bounds.south, bounds.east, bounds.north]);
 }
 
@@ -84,21 +69,7 @@ function findRoadsInSquare(roads, square) {
     } catch (e) {
       // Skip invalid geometries
       errorCount++;
-      if (errorCount <= 3) { // Only log first few errors
-        console.warn('Road geometry error:', e.message, 'Road:', road);
-      }
     }
-  }
-
-  // Debug log for this square
-  if (checkedCount > 0 && intersectingRoads.length === 0) {
-    console.warn(`⚠️ No roads found in square! Checked: ${checkedCount}, Intersected: ${intersectCount}, ClipFailed: ${clipFailCount}, Errors: ${errorCount}`);
-
-    // Log square bounds for debugging
-    const bounds = Array.isArray(square)
-      ? { south: square[0][0], west: square[0][1], north: square[1][0], east: square[1][1] }
-      : (square.bounds || square);
-    console.warn(`  Square bounds: [${bounds.south.toFixed(6)}, ${bounds.west.toFixed(6)}] to [${bounds.north.toFixed(6)}, ${bounds.east.toFixed(6)}]`);
   }
 
   return intersectingRoads;
@@ -215,28 +186,6 @@ function findBestWaypointOnRoads(roadsInSquare, square) {
  * @returns {Object} Result with optimized waypoints and statistics
  */
 export function optimizeWaypoints(squares, roads) {
-  console.log(`\n=== WAYPOINT OPTIMIZATION DEBUG ===`);
-  console.log(`Total squares: ${squares.length}`);
-  console.log(`Total roads: ${roads.length}`);
-
-  // Validate road data format
-  if (roads.length > 0) {
-    const sampleRoad = roads[0];
-    console.log(`Sample road structure:`, {
-      type: sampleRoad.type,
-      hasGeometry: !!sampleRoad.geometry,
-      geometryType: sampleRoad.geometry?.type,
-      coordsLength: sampleRoad.geometry?.coordinates?.length,
-      hasProperties: !!sampleRoad.properties
-    });
-  }
-
-  // Validate square data format
-  if (squares.length > 0) {
-    const sampleSquare = squares[0];
-    console.log(`Sample square structure:`, sampleSquare);
-  }
-
   const results = {
     waypoints: [],
     skippedSquares: [],
@@ -263,14 +212,6 @@ export function optimizeWaypoints(squares, roads) {
       const waypoint = findBestWaypointOnRoads(roadsInSquare, square);
 
       if (waypoint) {
-        // Validate waypoint is inside square
-        const isInside = waypoint.lat >= bounds.south && waypoint.lat <= bounds.north &&
-                         waypoint.lon >= bounds.west && waypoint.lon <= bounds.east;
-
-        if (!isInside) {
-          console.warn(`⚠️ Square ${i}: Waypoint outside bounds! WP: [${waypoint.lat.toFixed(6)}, ${waypoint.lon.toFixed(6)}], Bounds: [${bounds.south.toFixed(6)}, ${bounds.west.toFixed(6)}] to [${bounds.north.toFixed(6)}, ${bounds.east.toFixed(6)}]`);
-        }
-
         results.waypoints.push({
           ...waypoint,
           squareIndex: i,
@@ -308,32 +249,14 @@ export function optimizeWaypoints(squares, roads) {
     }
   }
 
-  console.log(`\n=== WAYPOINT OPTIMIZATION SUMMARY ===`);
-  console.log(`Squares with roads: ${results.statistics.withRoads}/${results.statistics.total}`);
-  console.log(`Waypoint types: ${results.statistics.intersections} intersections, ${results.statistics.midpoints} midpoints, ${results.statistics.nearest} nearest points`);
-  console.log(`Fallback to center: ${results.statistics.withoutRoads}`);
-
-  if (results.skippedSquares.length > 0) {
-    console.warn(`⚠️ ${results.skippedSquares.length} squares have no suitable roads - using center points as fallback`);
-    console.warn(`Problematic square indices: ${results.skippedSquares.join(', ')}`);
-  }
-  console.log(`=====================================\n`);
-
   return results;
 }
 
 /**
- * Calculate bounds that encompass all squares using Turf.js
+ * Calculate bounds that encompass all squares
  * @param {Array} squares - Array of square bounds
- * @returns {Object} Combined bounds
+ * @returns {Object} Combined bounds {minLat, maxLat, minLon, maxLon}
  */
 export function calculateCombinedBounds(squares) {
-  // Convert all squares to polygons and create a FeatureCollection
-  const polygons = squares.map(square => squareToPolygon(square));
-  const featureCollection = turf.featureCollection(polygons);
-
-  // Use Turf.js to calculate bounding box
-  const [minLon, minLat, maxLon, maxLat] = turf.bbox(featureCollection);
-
-  return { minLat, maxLat, minLon, maxLon };
+  return boundsToMinMax(combineBounds(squares));
 }
