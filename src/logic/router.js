@@ -6,9 +6,9 @@
  */
 
 import * as turf from '@turf/turf';
-import { solveTSP } from './tsp-solver.js';
+import { solveTSP, calculateRouteDistance } from './tsp-solver.js';
 import { fetchRoadsInArea } from './road-fetcher.js';
-import { optimizeWaypoints, calculateCombinedBounds } from './waypoint-optimizer.js';
+import { optimizeWaypoints, optimizeWaypointsWithSequence, calculateCombinedBounds } from './waypoint-optimizer.js';
 import {
   SimplificationStrategy,
   tryProfilesWithFallback,
@@ -162,41 +162,121 @@ export async function calculateRoute(proposedLayer, startPoint, bikeType, roundt
     throw new Error('Keine vorgeschlagenen Quadrate zum Routen vorhanden');
   }
 
-  // Step 2: Fetch roads for the area (road-aware routing)
-  let optimizedWaypoints;
+  // ════════════════════════════════════════════════════════════════
+  // OPTION C: Two-Phase Approach for Optimal Route
+  // ════════════════════════════════════════════════════════════════
+  // Phase 1: Find optimal visit order using rough waypoints
+  // Phase 2: Optimize waypoints for that specific order
+  // ════════════════════════════════════════════════════════════════
+
+  let finalWaypoints;
   let roadFetchFailed = false;
 
   try {
     // Calculate combined bounds for all squares
     const combinedBounds = calculateCombinedBounds(squares.map(s => s.bounds));
 
+    // Fetch roads once for both phases
     const roads = await fetchRoadsInArea(combinedBounds, bikeType);
 
+    console.log(`[Router] Fetched ${roads.length} roads for area`);
+
     if (roads.length > 0) {
-      // Step 3: Optimize waypoints using road data
-      const optimization = optimizeWaypoints(squares, roads);
-      optimizedWaypoints = optimization.waypoints;
+      // ────────────────────────────────────────────────────────────
+      // PHASE 1: Find optimal visit order
+      // ────────────────────────────────────────────────────────────
+      console.log(`[Router] Phase 1: Finding optimal visit order...`);
+
+      // Optimize waypoints WITHOUT sequence (neutral, just find roads)
+      const roughOptimization = optimizeWaypoints(squares, roads);
+      const roughWaypoints = roughOptimization.waypoints;
+
+      console.log(`[Router] Phase 1: Rough waypoints - ${roughOptimization.statistics.withRoads}/${roughOptimization.statistics.total} on roads`);
+
+      // Solve TSP with these rough waypoints to get FINAL visit order
+      const roughWaypointCoords = roughWaypoints.map(wp => ({ lat: wp.lat, lon: wp.lon }));
+      const tspResult = solveTSP(roughWaypointCoords, startPoint, roundtrip);
+
+      console.log(`[Router] Phase 1: TSP distance = ${tspResult.distance.toFixed(2)} km`);
+
+      // ────────────────────────────────────────────────────────────
+      // PHASE 2: Optimize waypoints for this specific order
+      // ────────────────────────────────────────────────────────────
+      console.log(`[Router] Phase 2: Optimizing waypoints for visit order...`);
+
+      // Extract squares only from TSP route (remove startPoint)
+      let routeSquaresOnly = tspResult.route.filter((waypoint, idx) => {
+        // Skip first point (always startPoint)
+        if (idx === 0) return false;
+        // Skip last point if roundtrip (also startPoint)
+        if (roundtrip && idx === tspResult.route.length - 1) return false;
+        return true;
+      });
+
+      // Map TSP waypoints back to original squares with bounds
+      const orderedSquares = routeSquaresOnly.map((waypoint, idx) => {
+        // Find the original square that matches this waypoint
+        const matchingSquare = squares.find(s => {
+          // Match by finding the rough waypoint
+          const roughWp = roughWaypoints.find(rw =>
+            Math.abs(rw.lat - waypoint.lat) < 0.0001 &&
+            Math.abs(rw.lon - waypoint.lon) < 0.0001
+          );
+          if (!roughWp) return false;
+
+          // Match rough waypoint back to square
+          return roughWp.squareIndex !== undefined &&
+                 squares[roughWp.squareIndex] === s;
+        });
+
+        if (!matchingSquare) {
+          console.warn(`[Router] Phase 2: No matching square found for waypoint ${idx}`);
+        }
+
+        return matchingSquare || { ...waypoint, bounds: null };
+      });
+
+      console.log(`[Router] Phase 2: Matched ${orderedSquares.filter(s => s.bounds).length}/${orderedSquares.length} squares with bounds`);
+
+      // Optimize waypoints WITH SEQUENCE for this specific order
+      const fineOptimization = optimizeWaypointsWithSequence(orderedSquares, roads, startPoint, roundtrip);
+      finalWaypoints = fineOptimization.waypoints;
+
+      console.log(`[Router] Phase 2: Fine waypoints - ${fineOptimization.statistics.sequenceOptimized}/${fineOptimization.statistics.total} sequence-optimized`);
+      console.log(`[Router] ✓ Two-phase optimization complete`);
+
     } else {
+      console.warn('[Router] No roads found in area - falling back to centers');
       roadFetchFailed = true;
     }
   } catch (error) {
+    console.error('[Router] Road fetching failed:', error);
     roadFetchFailed = true;
   }
 
-  // Fallback to square centers if road fetch failed
-  if (roadFetchFailed || !optimizedWaypoints) {
-    optimizedWaypoints = squares.map((s, i) => ({
-      lat: s.lat,
-      lon: s.lon,
+  // Fallback if road fetch failed: use square centers
+  if (roadFetchFailed || !finalWaypoints) {
+    console.log('[Router] Using fallback: square centers');
+    const centerWaypoints = squares.map(s => ({ lat: s.lat, lon: s.lon }));
+    const tspResult = solveTSP(centerWaypoints, startPoint, roundtrip);
+
+    finalWaypoints = tspResult.route.filter((wp, idx) => {
+      if (idx === 0) return false;
+      if (roundtrip && idx === tspResult.route.length - 1) return false;
+      return true;
+    }).map((wp, i) => ({
+      lat: wp.lat,
+      lon: wp.lon,
       squareIndex: i,
       hasRoad: false,
       type: 'center-fallback'
     }));
   }
 
-  // Step 4: Solve TSP to get optimal order
-  const waypointCoords = optimizedWaypoints.map(wp => ({ lat: wp.lat, lon: wp.lon, type: wp.type, hasRoad: wp.hasRoad }));
-  const tspResult = solveTSP(waypointCoords, startPoint, roundtrip);
+  // Build final route (order is already determined by Phase 1 TSP)
+  const finalRoute = [startPoint, ...finalWaypoints, ...(roundtrip ? [startPoint] : [])];
+  const finalDistance = calculateRouteDistance(finalRoute);
+  const finalTspResult = { route: finalRoute, distance: finalDistance };
 
   // Helper function to build route response
   const buildRouteResponse = (result, waypoints, options = {}) => {
@@ -204,8 +284,8 @@ export async function calculateRoute(proposedLayer, startPoint, bikeType, roundt
     return {
       ...routeData,
       waypoints,
-      allSquares: tspResult.route,
-      straightLineDistance: tspResult.distance,
+      allSquares: finalTspResult.route,
+      straightLineDistance: finalTspResult.distance,
       profileUsed: result.profile,
       roadAware: options.roadAware ?? !roadFetchFailed,
       simplified: options.simplified ?? false,
@@ -214,10 +294,10 @@ export async function calculateRoute(proposedLayer, startPoint, bikeType, roundt
   };
 
   // Step 5: Initialize simplification strategy
-  const simplification = new SimplificationStrategy(tspResult.route);
-  let finalWaypoints = tspResult.route;
+  const simplification = new SimplificationStrategy(finalTspResult.route);
+  finalWaypoints = finalTspResult.route;
 
-  if (tspResult.route.length > 20) {
+  if (finalTspResult.route.length > 20) {
     finalWaypoints = simplification.nextLevel().waypoints;
   }
 

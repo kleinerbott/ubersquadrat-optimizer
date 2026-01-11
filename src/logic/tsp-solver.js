@@ -61,15 +61,64 @@ export function calculateRouteDistance(route) {
 }
 
 /**
- * Solve TSP using nearest neighbor algorithm
+ * Solve TSP using nearest neighbor algorithm with optional 2-opt optimization
  * @param {Array} points - Array of {lat, lon} points to visit
  * @param {Object} startPoint - Starting point {lat, lon}
  * @param {boolean} roundtrip - Whether to return to start
+ * @param {boolean} optimize - Whether to apply 2-opt optimization (default: true)
  * @returns {Object} {route: Array, distance: number}
  */
-export function solveTSP(points, startPoint, roundtrip = false) {
-  const route = nearestNeighbor(points, startPoint, roundtrip);
+export function solveTSP(points, startPoint, roundtrip = false, optimize = true) {
+  let route = nearestNeighbor(points, startPoint, roundtrip);
+
+  if (optimize && points.length >= 3) {
+    route = twoOptOptimize(route);
+  }
   const dist = calculateRouteDistance(route);
 
   return { route, distance: dist };
+}
+
+/**
+ * 2-opt optimization to improve route
+ * Tries to remove crossing paths by reversing segments
+ * @param {Array} route - Initial route
+ * @param {number} maxIterations - Maximum optimization iterations
+ * @returns {Array} Optimized route
+ */
+export function twoOptOptimize(route, maxIterations = 100) {
+  if (route.length < 4) return route;
+
+  let improved = true;
+  let iterations = 0;
+  let currentRoute = [...route];
+  let currentDistance = calculateRouteDistance(currentRoute);
+
+  while (improved && iterations < maxIterations) {
+    improved = false;
+    iterations++;
+
+    for (let i = 1; i < currentRoute.length - 2; i++) {
+      for (let j = i + 1; j < currentRoute.length - 1; j++) {
+        const newRoute = [
+          ...currentRoute.slice(0, i),
+          ...currentRoute.slice(i, j + 1).reverse(),
+          ...currentRoute.slice(j + 1)
+        ];
+
+        const newDistance = calculateRouteDistance(newRoute);
+
+        if (newDistance < currentDistance) {
+          currentRoute = newRoute;
+          currentDistance = newDistance;
+          improved = true;
+          break;
+        }
+      }
+      if (improved) break;
+    }
+  }
+
+  console.log(`2-opt: ${iterations} iterations, ${currentDistance.toFixed(2)} km`);
+  return currentRoute;
 }
