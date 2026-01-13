@@ -4,7 +4,7 @@
  */
 
 import * as turf from '@turf/turf';
-import { normalizeBounds, combineBounds, boundsToMinMax } from './bounds-utils.js';
+import { normalizeBounds, combineBounds, boundsToMinMax, getBoundsCenter } from './bounds-utils.js';
 
 /**
  * Create a Turf.js polygon from square bounds
@@ -16,21 +16,6 @@ function squareToPolygon(square) {
   return turf.bboxPolygon([bounds.west, bounds.south, bounds.east, bounds.north]);
 }
 
-/**
- * Get center point of a square using Turf.js
- * @param {Object} square
- * @returns {{lat: number, lon: number}}
- */
-function getSquareCenter(square) {
-  const polygon = squareToPolygon(square);
-  const center = turf.center(polygon);
-  const coords = center.geometry.coordinates;
-
-  return {
-    lat: coords[1],
-    lon: coords[0]
-  };
-}
 
 /**
  * Find roads that pass through a square
@@ -87,7 +72,7 @@ function findBestWaypointOnRoads(roadsInSquare, square) {
     return null;
   }
 
-  const squareCenter = getSquareCenter(square);
+  const squareCenter = getBoundsCenter(square);
   const centerPoint = turf.point([squareCenter.lon, squareCenter.lat]);
 
   // Collect candidate points
@@ -215,6 +200,7 @@ export function optimizeWaypoints(squares, roads) {
         results.waypoints.push({
           ...waypoint,
           squareIndex: i,
+          gridCoords: square.gridCoords, // Use grid coords for unique identification
           hasRoad: true
         });
         results.statistics.withRoads++;
@@ -225,10 +211,11 @@ export function optimizeWaypoints(squares, roads) {
         else results.statistics.nearest++;
       } else {
         // Fallback to center
-        const center = getSquareCenter(square);
+        const center = getBoundsCenter(square);
         results.waypoints.push({
           ...center,
           squareIndex: i,
+          gridCoords: square.gridCoords, // Use grid coords for unique identification
           hasRoad: false,
           type: 'center-fallback'
         });
@@ -237,10 +224,11 @@ export function optimizeWaypoints(squares, roads) {
       }
     } else {
       // No roads in square - use center as fallback but flag it
-      const center = getSquareCenter(square);
+      const center = getBoundsCenter(square);
       results.waypoints.push({
         ...center,
         squareIndex: i,
+        gridCoords: square.gridCoords, // Use grid coords for unique identification
         hasRoad: false,
         type: 'no-road'
       });
@@ -253,26 +241,74 @@ export function optimizeWaypoints(squares, roads) {
 }
 
 /**
+ * Check if a road connects to the next square
+ * @param {Object} road - Road feature (with original geometry)
+ * @param {Object} nextSquare - Next square bounds
+ * @returns {boolean} True if road intersects next square
+ */
+function roadConnectsToNextSquare(road, nextSquare) {
+  if (!nextSquare || !nextSquare.bounds) {
+    return false;
+  }
+
+  try {
+    const nextSquarePoly = squareToPolygon(nextSquare);
+    return turf.booleanIntersects(road.original, nextSquarePoly);
+  } catch (e) {
+    return false;
+  }
+}
+
+/**
+ * Find roads that connect current square to next square
+ * These are roads that pass through both squares
+ * @param {Array} roadsInSquare - Roads in current square
+ * @param {Object} nextSquare - Next square bounds
+ * @returns {Set} Set of road indices that connect to next square
+ */
+function findConnectingRoads(roadsInSquare, nextSquare) {
+  const connectingIndices = new Set();
+
+  if (!nextSquare || !nextSquare.bounds) {
+    return connectingIndices;
+  }
+
+  for (let i = 0; i < roadsInSquare.length; i++) {
+    if (roadConnectsToNextSquare(roadsInSquare[i], nextSquare)) {
+      connectingIndices.add(i);
+    }
+  }
+
+  return connectingIndices;
+}
+
+/**
  * Find the best waypoint considering neighboring squares in the route
  * Uses distance sum to previous and next square for selection
+ * Prioritizes roads that connect to the next square
  * @param {Array} roadsInSquare - Roads clipped to square
  * @param {Object} square - Current square bounds
  * @param {Object|null} prevPoint - Previous waypoint {lat, lon} or null
  * @param {Object|null} nextPoint - Next waypoint {lat, lon} or null
+ * @param {Object|null} nextSquare - Next square object (with bounds) or null
  * @returns {{lat: number, lon: number} | null}
  */
-function findBestWaypointWithNeighbors(roadsInSquare, square, prevPoint, nextPoint) {
+function findBestWaypointWithNeighbors(roadsInSquare, square, prevPoint, nextPoint, nextSquare = null) {
   if (roadsInSquare.length === 0) {
     return null;
   }
 
-  const squareCenter = getSquareCenter(square);
+  const squareCenter = getBoundsCenter(square);
   const centerPoint = turf.point([squareCenter.lon, squareCenter.lat]);
+
+  // Find roads that connect to next square (if available)
+  const connectingRoads = findConnectingRoads(roadsInSquare, nextSquare);
 
   // Collect candidate points (same as before)
   const candidates = [];
 
   // Strategy 1: Find intersections between roads (best waypoints)
+  // BOOST priority if intersection is on a connecting road
   if (roadsInSquare.length > 1) {
     for (let i = 0; i < roadsInSquare.length; i++) {
       for (let j = i + 1; j < roadsInSquare.length; j++) {
@@ -283,11 +319,15 @@ function findBestWaypointWithNeighbors(roadsInSquare, square, prevPoint, nextPoi
           );
 
           if (intersections.features.length > 0) {
+            // Check if either road connects to next square
+            const isConnecting = connectingRoads.has(i) || connectingRoads.has(j);
+
             intersections.features.forEach(pt => {
               candidates.push({
                 point: pt,
-                priority: 3,
-                type: 'intersection'
+                priority: isConnecting ? 5 : 3, // BOOST if connecting road
+                type: isConnecting ? 'intersection-connecting' : 'intersection',
+                isConnecting: isConnecting
               });
             });
           }
@@ -299,7 +339,9 @@ function findBestWaypointWithNeighbors(roadsInSquare, square, prevPoint, nextPoi
   }
 
   // Strategy 2: Midpoints of road segments within square
-  for (const road of roadsInSquare) {
+  // BOOST if on connecting road
+  for (let i = 0; i < roadsInSquare.length; i++) {
+    const road = roadsInSquare[i];
     try {
       const coords = road.clipped.geometry.coordinates;
       if (coords.length >= 2) {
@@ -307,10 +349,13 @@ function findBestWaypointWithNeighbors(roadsInSquare, square, prevPoint, nextPoi
           turf.point(coords[0]),
           turf.point(coords[coords.length - 1])
         );
+
+        const isConnecting = connectingRoads.has(i);
         candidates.push({
           point: midpoint,
-          priority: 2,
-          type: 'midpoint'
+          priority: isConnecting ? 4 : 2, // BOOST if connecting road
+          type: isConnecting ? 'midpoint-connecting' : 'midpoint',
+          isConnecting: isConnecting
         });
       }
     } catch (e) {
@@ -318,14 +363,23 @@ function findBestWaypointWithNeighbors(roadsInSquare, square, prevPoint, nextPoi
     }
   }
 
-  // Strategy 3: Point on road closest to square center
-  for (const road of roadsInSquare) {
+  // Strategy 3: Point on road closest to square center or next point
+  // BOOST if on connecting road
+  const referencePoint = nextPoint
+    ? turf.point([nextPoint.lon, nextPoint.lat])
+    : centerPoint;
+
+  for (let i = 0; i < roadsInSquare.length; i++) {
+    const road = roadsInSquare[i];
     try {
-      const nearestPoint = turf.nearestPointOnLine(road.clipped, centerPoint);
+      const nearestPoint = turf.nearestPointOnLine(road.clipped, referencePoint);
+      const isConnecting = connectingRoads.has(i);
+
       candidates.push({
         point: nearestPoint,
-        priority: 1,
-        type: 'nearest'
+        priority: isConnecting ? 3.5 : 1, // BOOST if connecting road
+        type: isConnecting ? 'nearest-connecting' : 'nearest',
+        isConnecting: isConnecting
       });
     } catch (e) {
       // Skip invalid geometries
@@ -336,7 +390,7 @@ function findBestWaypointWithNeighbors(roadsInSquare, square, prevPoint, nextPoi
     return null;
   }
 
-  // NEW LOGIC: Sort by distance to neighbors if we have prev/next points
+  // Sort by distance to neighbors if we have prev/next points
   if (prevPoint || nextPoint) {
     candidates.sort((a, b) => {
       // First by priority (intersections preferred)
@@ -381,10 +435,15 @@ function findBestWaypointWithNeighbors(roadsInSquare, square, prevPoint, nextPoi
   const best = candidates[0];
   const coords = best.point.geometry.coordinates;
 
+  if (best.isConnecting) {
+    console.log(`[WaypointOptimizer] ✓ Selected ${best.type} waypoint on CONNECTING road (priority ${best.priority})`);
+  }
+
   return {
     lat: coords[1],
     lon: coords[0],
-    type: best.type
+    type: best.type,
+    isConnecting: best.isConnecting || false  // Pass through isConnecting flag
   };
 }
 
@@ -408,11 +467,11 @@ export function optimizeWaypointsWithSequence(orderedSquares, roads, startPoint 
       intersections: 0,
       midpoints: 0,
       nearest: 0,
-      sequenceOptimized: 0
+      sequenceOptimized: 0,
+      connectingRoads: 0 // NEW: Count waypoints on roads connecting to next square
     }
   };
 
-  console.log(`[WaypointOptimizer] Processing ${orderedSquares.length} squares with ${roads.length} roads`);
 
   for (let i = 0; i < orderedSquares.length; i++) {
     const square = orderedSquares[i];
@@ -424,6 +483,7 @@ export function optimizeWaypointsWithSequence(orderedSquares, roads, startPoint 
       results.waypoints.push({
         ...center,
         squareIndex: i,
+        gridCoords: square?.gridCoords, // Use grid coords for unique identification
         hasRoad: false,
         type: 'no-bounds'
       });
@@ -433,7 +493,6 @@ export function optimizeWaypointsWithSequence(orderedSquares, roads, startPoint 
     }
 
     const roadsInSquare = findRoadsInSquare(roads, square);
-    console.log(`[WaypointOptimizer] Square ${i}: found ${roadsInSquare.length} roads`);
 
     // Determine previous and next points
     let prevPoint = null;
@@ -450,6 +509,8 @@ export function optimizeWaypointsWithSequence(orderedSquares, roads, startPoint 
       }
     }
 
+    // Determine next square for road connection analysis
+    let nextSquare = null;
     if (i === orderedSquares.length - 1) {
       // Last square
       if (roundtrip && startPoint) {
@@ -458,35 +519,47 @@ export function optimizeWaypointsWithSequence(orderedSquares, roads, startPoint 
       // Otherwise nextPoint stays null
     } else {
       // Next square center as rough approximation
-      nextPoint = getSquareCenter(orderedSquares[i + 1]);
+      nextSquare = orderedSquares[i + 1];
+      nextPoint = getBoundsCenter(nextSquare);
     }
 
     if (roadsInSquare.length > 0) {
-      const waypoint = findBestWaypointWithNeighbors(roadsInSquare, square, prevPoint, nextPoint);
+      const waypoint = findBestWaypointWithNeighbors(roadsInSquare, square, prevPoint, nextPoint, nextSquare);
 
       if (waypoint) {
         results.waypoints.push({
           ...waypoint,
           squareIndex: i,
+          gridCoords: square.gridCoords, // Use grid coords for unique identification
           hasRoad: true
         });
         results.statistics.withRoads++;
 
         // Track waypoint type statistics
-        if (waypoint.type === 'intersection') results.statistics.intersections++;
-        else if (waypoint.type === 'midpoint') results.statistics.midpoints++;
-        else results.statistics.nearest++;
+        if (waypoint.type === 'intersection' || waypoint.type === 'intersection-connecting') {
+          results.statistics.intersections++;
+        } else if (waypoint.type === 'midpoint' || waypoint.type === 'midpoint-connecting') {
+          results.statistics.midpoints++;
+        } else {
+          results.statistics.nearest++;
+        }
 
         // Count if sequence optimization was used
         if (prevPoint || nextPoint) {
           results.statistics.sequenceOptimized++;
         }
+
+        // Count if waypoint is on a connecting road
+        if (waypoint.isConnecting) {
+          results.statistics.connectingRoads++;
+        }
       } else {
         // Fallback to center
-        const center = getSquareCenter(square);
+        const center = getBoundsCenter(square);
         results.waypoints.push({
           ...center,
           squareIndex: i,
+          gridCoords: square.gridCoords, // Use grid coords for unique identification
           hasRoad: false,
           type: 'center-fallback'
         });
@@ -495,10 +568,11 @@ export function optimizeWaypointsWithSequence(orderedSquares, roads, startPoint 
       }
     } else {
       // No roads in square - use center as fallback
-      const center = getSquareCenter(square);
+      const center = getBoundsCenter(square);
       results.waypoints.push({
         ...center,
         squareIndex: i,
+        gridCoords: square.gridCoords, // Use grid coords for unique identification
         hasRoad: false,
         type: 'no-road'
       });
@@ -506,6 +580,12 @@ export function optimizeWaypointsWithSequence(orderedSquares, roads, startPoint 
       results.skippedSquares.push(i);
     }
   }
+
+  // Log summary statistics
+  console.log(`[WaypointOptimizer] ✓ Optimization complete:`);
+  console.log(`  - ${results.statistics.connectingRoads}/${results.statistics.total} waypoints on connecting roads`);
+  console.log(`  - ${results.statistics.intersections} intersections, ${results.statistics.midpoints} midpoints, ${results.statistics.nearest} nearest points`);
+  console.log(`  - ${results.statistics.withRoads} with roads, ${results.statistics.withoutRoads} fallback to center`);
 
   return results;
 }

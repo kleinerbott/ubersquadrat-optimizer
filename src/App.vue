@@ -1,5 +1,6 @@
 <script setup>
 import { ref, provide } from 'vue';
+import { useAppStore } from './stores/appStore';
 import LeafletMap from './components/LeafletMap.vue';
 import AppSidebar from './components/AppSidebar.vue';
 
@@ -34,6 +35,63 @@ function handleOptimized(result) {
  */
 function handleRouteCalculated(routeData) {
   mapRef.value?.showRoute(routeData);
+
+  // Update store with TSP-sorted squares
+  const store = useAppStore();
+  const allSquares = routeData.allSquares; // Route waypoints in TSP order
+
+  if (allSquares && allSquares.length > 0) {
+    // Build new arrays in TSP order
+    const tspOrderedRectangles = [];
+    const tspOrderedMetadata = [];
+    const skippedIndices = [];
+
+    let visitOrder = 1;
+
+    for (let i = 0; i < allSquares.length; i++) {
+      const wp = allSquares[i];
+
+      // Skip start point
+      if (i === 0 && wp.lat === routeData.waypoints[0].lat && wp.lon === routeData.waypoints[0].lon) {
+        continue;
+      }
+
+      // Skip final point if roundtrip
+      if (store.routing.roundtrip && i === allSquares.length - 1) {
+        continue;
+      }
+
+      // Check if skipped
+      const wasSkipped = wp.hasRoad === false;
+      if (wasSkipped) {
+        skippedIndices.push(tspOrderedRectangles.length);
+      }
+
+      // Find original square by grid coordinates (not array index!)
+      if (wp.gridCoords) {
+        const originalIndex = store.proposedMetadata.findIndex(meta =>
+          meta.gridCoords &&
+          meta.gridCoords.i === wp.gridCoords.i &&
+          meta.gridCoords.j === wp.gridCoords.j
+        );
+
+        if (originalIndex !== -1) {
+          tspOrderedRectangles.push(store.proposedSquares[originalIndex]);
+          tspOrderedMetadata.push({
+            ...store.proposedMetadata[originalIndex],
+            selectionOrder: visitOrder++
+          });
+        }
+      }
+    }
+
+    // Update store with TSP-sorted data
+    store.proposedSquares = tspOrderedRectangles;
+    store.proposedMetadata = tspOrderedMetadata;
+
+    // Re-render with skipped indices
+    mapRef.value?.showProposedSquares(tspOrderedRectangles, tspOrderedMetadata, skippedIndices);
+  }
 }
 
 /**

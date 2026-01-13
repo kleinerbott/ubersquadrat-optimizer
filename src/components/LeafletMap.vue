@@ -121,30 +121,39 @@ function onKmlLoaded(data) {
 
 /**
  * Show proposed squares on map with score tooltips and popups
+ * @param {Array} squares - Array of rectangle bounds
+ * @param {Array} metadata - Array of metadata for each square
+ * @param {Array} skippedIndices - Array of indices for skipped squares
  */
-function showProposedSquares(squares, metadata = []) {
+function showProposedSquares(squares, metadata = [], skippedIndices = []) {
   layers.proposed.clearLayers();
 
   squares.forEach((rectangle, index) => {
     const meta = metadata[index];
+    const isSkipped = skippedIndices.includes(index);
 
-    // Create rectangle with same styling
+    // Create rectangle with conditional styling
     const rect = L.rectangle(rectangle, {
-      color: CONFIG.PROPOSED_COLOR,
-      fillColor: CONFIG.PROPOSED_COLOR,
-      fillOpacity: CONFIG.PROPOSED_OPACITY
+      color: isSkipped ? '#d32f2f' : CONFIG.PROPOSED_COLOR, // Red border for skipped
+      fillColor: isSkipped ? '#ffcdd2' : CONFIG.PROPOSED_COLOR, // Light red fill for skipped
+      fillOpacity: isSkipped ? 0.4 : CONFIG.PROPOSED_OPACITY,
+      weight: isSkipped ? 3 : 2 // Thicker border for skipped
     });
 
     // Add hover tooltip (quick summary)
     if (meta) {
-      const tooltipText = `#${meta.selectionOrder}: ${meta.score.toLocaleString()} points`;
+      const tooltipText = isSkipped
+        ? `#${meta.selectionOrder}: ÜBERSPRUNGEN (keine Straßen)`
+        : `#${meta.selectionOrder}: ${meta.score.toLocaleString()} points`;
       rect.bindTooltip(tooltipText, {
         permanent: false,
         direction: 'top'
       });
 
       // Add click popup (full details)
-      const popupContent = formatScorePopup(meta);
+      const popupContent = isSkipped
+        ? `<div style="color: #d32f2f; font-weight: bold;">Quadrat übersprungen</div><div style="margin-top: 8px;">Keine geeigneten Straßen für gewählten Fahrrad-Typ gefunden.</div>`
+        : formatScorePopup(meta);
       rect.bindPopup(popupContent, {
         maxWidth: 300,
         className: 'score-popup'

@@ -14,6 +14,23 @@ export default defineConfig({
     }
   },
   server: {
-    port: 8080
+    port: 8080,
+    // Disable caching during development
+    headers: {
+      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0'
+    }
+  },
+  build: {
+    // Add hash to filenames for cache busting in production
+    rollupOptions: {
+      output: {
+        // Use hash in filenames to force browser to reload on changes
+        entryFileNames: `assets/[name].[hash].js`,
+        chunkFileNames: `assets/[name].[hash].js`,
+        assetFileNames: `assets/[name].[hash].[ext]`
+      }
+    }
   }
 });

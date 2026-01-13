@@ -143,3 +143,32 @@ export function combineBounds(boundsArray) {
     east: Math.max(...normalized.map(b => b.east))
   };
 }
+
+/**
+ * Default tolerance for floating-point coordinate comparison (~11 meters)
+ */
+export const COORD_TOLERANCE = 0.0001;
+
+/**
+ * Check if two coordinates match within tolerance
+ * Handles floating-point precision issues in coordinate comparison
+ * @param {number} a - First coordinate value
+ * @param {number} b - Second coordinate value
+ * @param {number} tolerance - Tolerance in degrees (default: 0.0001 ~ 11m)
+ * @returns {boolean} True if coordinates match within tolerance
+ */
+export function coordsMatch(a, b, tolerance = COORD_TOLERANCE) {
+  return Math.abs(a - b) < tolerance;
+}
+
+/**
+ * Check if two points match within tolerance
+ * @param {Object} p1 - First point {lat, lon}
+ * @param {Object} p2 - Second point {lat, lon}
+ * @param {number} tolerance - Tolerance in degrees
+ * @returns {boolean} True if points match within tolerance
+ */
+export function pointsMatch(p1, p2, tolerance = COORD_TOLERANCE) {
+  return coordsMatch(p1.lat, p2.lat, tolerance) &&
+         coordsMatch(p1.lon, p2.lon, tolerance);
+}

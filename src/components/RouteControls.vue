@@ -13,6 +13,7 @@ const emit = defineEmits(['route-calculated']);
 
 const calculating = ref(false);
 const error = ref(null);
+const statusMessage = ref(null);
 
 const bikeTypes = [
   { title: 'Standard', value: 'trekking' },
@@ -33,8 +34,10 @@ function toggleSelectingPoint() {
 async function handleCalculateRoute() {
   if (!canCalculateRoute.value) return;
 
+  console.time('Timer Routing');
   calculating.value = true;
   error.value = null;
+  statusMessage.value = 'Lade Straßendaten...';
 
   try {
     // Get the proposed layer from the map
@@ -43,23 +46,39 @@ async function handleCalculateRoute() {
       throw new Error('Keine vorgeschlagenen Quadrate vorhanden');
     }
 
+    // Get metadata from store to pass grid coordinates
+    const proposedMetadata = store.proposedMetadata;
+
     const routeData = await calculateRoute(
       proposedLayer,
       routing.value.startPoint,
       routing.value.bikeType,
       routing.value.roundtrip,
-      CONFIG.BROUTER_API_URL
+      CONFIG.BROUTER_API_URL,
+      proposedMetadata  // Pass metadata with grid coords
     );
 
+    statusMessage.value = 'Route wird berechnet...';
     store.setCurrentRoute(routeData);
     emit('route-calculated', routeData);
 
+    console.timeEnd('Timer Routing');
+    statusMessage.value = null;
+
+    // Show warning if squares were skipped due to missing roads
+    if (routeData.skippedSquareCoords && routeData.skippedSquareCoords.length > 0) {
+      const count = routeData.skippedSquareCoords.length;
+      const bikeTypeLabel = bikeTypes.find(b => b.value === routing.value.bikeType)?.title || routing.value.bikeType;
+      error.value = `${count} Quadrat(e) übersprungen (keine geeigneten Straßen für ${bikeTypeLabel}). Versuche einen anderen Routing-Typ.`;
+    }
     // Show warning if route was simplified
-    if (routeData.simplified) {
+    else if (routeData.simplified) {
       error.value = `Route vereinfacht: ${routeData.waypoints.length} von ${routeData.allSquares.length} Punkten`;
     }
   } catch (err) {
     console.error('Route calculation error:', err);
+    console.timeEnd('Timer Routing');
+    statusMessage.value = null;
     error.value = err.message;
   } finally {
     calculating.value = false;
@@ -119,10 +138,20 @@ async function handleCalculateRoute() {
       Route berechnen
     </v-btn>
 
+    <!-- Status message during calculation -->
+    <v-alert
+      v-if="statusMessage"
+      type="info"
+      density="compact"
+      class="mt-2"
+    >
+      {{ statusMessage }}
+    </v-alert>
+
     <!-- Error/warning message -->
     <v-alert
       v-if="error"
-      :type="error.includes('vereinfacht') ? 'warning' : 'error'"
+      :type="error.includes('vereinfacht') || error.includes('übersprungen') ? 'warning' : 'error'"
       density="compact"
       class="mt-2"
       closable

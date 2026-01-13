@@ -117,11 +117,18 @@ function overpassToGeoJSON(overpassData) {
   return features;
 }
 
+// Multiple Overpass API instances as fallback
+const OVERPASS_INSTANCES = [
+  'https://overpass-api.de/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter',
+  'https://overpass.openstreetmap.ru/api/interpreter'
+];
+
 /**
  * Fetch roads from Overpass API for a bounding box with retry logic
  * @param {Object} bounds - {south, west, north, east} or {minLat, maxLat, minLon, maxLon}
  * @param {string} bikeType - 'fastbike', 'gravel', or 'trekking'
- * @param {number} maxRetries - Maximum number of retry attempts
+ * @param {number} maxRetries - Maximum number of retry attempts per instance
  * @returns {Promise<Array>} Array of GeoJSON road features
  */
 export async function fetchRoadsInArea(bounds, bikeType = 'trekking', maxRetries = 2) {
@@ -132,65 +139,98 @@ export async function fetchRoadsInArea(bounds, bikeType = 'trekking', maxRetries
   const query = buildOverpassQuery(bufferedBounds, bikeType);
 
   let lastError = null;
-  let attempt = 0;
+  let totalAttempts = 0;
 
-  // Retry loop
-  while (attempt <= maxRetries) {
-    attempt++;
+  // Try each Overpass instance
+  for (let instanceIdx = 0; instanceIdx < OVERPASS_INSTANCES.length; instanceIdx++) {
+    const apiUrl = OVERPASS_INSTANCES[instanceIdx];
+    const instanceName = apiUrl.includes('overpass-api.de') ? 'overpass-api.de'
+                       : apiUrl.includes('kumi.systems') ? 'kumi.systems'
+                       : 'openstreetmap.ru';
 
-    try {
-      const response = await fetch('https://overpass-api.de/api/interpreter', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded'
-        },
-        body: `data=${encodeURIComponent(query)}`
-      });
+    console.log(`[RoadFetcher] Trying Overpass instance ${instanceIdx + 1}/${OVERPASS_INSTANCES.length}: ${instanceName}`);
 
-      // Handle 504 Gateway Timeout - retry
-      if (response.status === 504) {
-        const error = new Error(`Gateway Timeout (504) - Overpass API is overloaded`);
-        error.shouldRetry = true;
-        throw error;
+    let attempt = 0;
+
+    // Retry loop for this instance
+    while (attempt <= maxRetries) {
+      attempt++;
+      totalAttempts++;
+
+      try {
+        console.log(`[RoadFetcher] Attempt ${attempt}/${maxRetries + 1} on ${instanceName}...`);
+
+        const response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded'
+          },
+          body: `data=${encodeURIComponent(query)}`
+        });
+
+        // Handle 504 Gateway Timeout - retry
+        if (response.status === 504) {
+          console.warn(`[RoadFetcher] 504 Gateway Timeout on ${instanceName} (attempt ${attempt})`);
+          const error = new Error(`Gateway Timeout (504) - Server overloaded`);
+          error.shouldRetry = true;
+          throw error;
+        }
+
+        // Handle 429 Too Many Requests
+        if (response.status === 429) {
+          console.warn(`[RoadFetcher] 429 Too Many Requests on ${instanceName} (attempt ${attempt})`);
+          const error = new Error(`Too Many Requests (429) - Rate limited`);
+          error.shouldRetry = true;
+          throw error;
+        }
+
+        // Handle other HTTP errors
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        const roads = overpassToGeoJSON(data);
+
+        // Success - return roads
+        if (roads.length > 0) {
+          console.log(`[RoadFetcher] ✓ Success: ${roads.length} roads from ${instanceName} (attempt ${attempt})`);
+          return roads;
+        }
+
+        // No roads but retries remaining - mark for retry
+        console.warn(`[RoadFetcher] 0 roads returned from ${instanceName} (attempt ${attempt})`);
+        if (attempt <= maxRetries) {
+          const error = new Error(`0 roads returned`);
+          error.shouldRetry = true;
+          throw error;
+        }
+
+        // Last attempt on this instance - try next instance
+        break;
+
+      } catch (error) {
+        lastError = error;
+
+        // Should we retry?
+        const shouldRetry = error.shouldRetry || error.name === 'TypeError' || error.message.includes('Failed to fetch');
+
+        if (shouldRetry && attempt <= maxRetries) {
+          const delay = 2000;
+          console.log(`[RoadFetcher] Retrying in ${delay / 1000}s...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue; // Retry same instance
+        }
+
+        // No more retries on this instance - try next instance
+        console.warn(`[RoadFetcher] Failed on ${instanceName} after ${attempt} attempts: ${error.message}`);
+        break;
       }
-
-      // Handle other HTTP errors
-      if (!response.ok) {
-        throw new Error(`Overpass API error: ${response.status} ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      const roads = overpassToGeoJSON(data);
-
-      // Success - return roads (even if 0, after retries)
-      if (roads.length > 0 || attempt > maxRetries) {
-        return roads;
-      }
-
-      // No roads but retries remaining - mark for retry
-      const error = new Error(`0 roads returned`);
-      error.shouldRetry = true;
-      throw error;
-
-    } catch (error) {
-      lastError = error;
-
-      // Should we retry?
-      const shouldRetry = error.shouldRetry || error.name === 'TypeError';
-
-      if (shouldRetry && attempt <= maxRetries) {
-        const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000); // Exponential backoff: 1s, 2s, 4s (max 5s)
-        await new Promise(resolve => setTimeout(resolve, delay));
-        continue; // Retry
-      }
-
-      // No more retries
-      break;
     }
   }
 
-  // All attempts failed
-  throw new Error(`Road data fetch failed after ${attempt} attempts: ${lastError?.message || 'Unknown error'}`);
+  // All instances and attempts failed
+  throw new Error(`Straßendaten konnten nicht geladen werden nach ${totalAttempts} Versuchen über ${OVERPASS_INSTANCES.length} Server. Overpass API ist möglicherweise überlastet. Bitte warte 1-2 Minuten und versuche es erneut.`);
 }
 
 /**

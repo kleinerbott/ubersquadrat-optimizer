@@ -6,7 +6,7 @@
  */
 
 import * as turf from '@turf/turf';
-import { callBRouterAPI } from './router.js';
+import { callBRouterAPI } from './brouter-api.js';
 
 /**
  * Simplify waypoints by removing intermediate points that are very close together

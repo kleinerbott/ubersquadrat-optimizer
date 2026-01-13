@@ -53,6 +53,7 @@ async function handleLoadClick() {
  * Process KML content and update store
  */
 async function processKmlContent(kmlContent, filename) {
+  console.time('Timer KML Laden');
   store.setLoading(true);
   store.resetState();
 
@@ -100,9 +101,10 @@ async function processKmlContent(kmlContent, filename) {
       kmlLayer: layer
     });
 
-    console.log('KML loading complete');
+    console.timeEnd('Timer KML Laden');
   } catch (err) {
     console.error('Error processing KML:', err);
+    console.timeEnd('Timer KML Laden');
     error.value = err.message;
     throw err; // Re-throw to be caught by onMounted
   } finally {
