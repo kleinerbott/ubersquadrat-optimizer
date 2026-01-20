@@ -1,17 +1,39 @@
 <script setup>
-import { ref, provide } from 'vue';
+import { ref, provide, watch, computed } from 'vue';
+import { useDisplay } from 'vuetify';
 import { useAppStore } from './stores/appStore';
+import { storeToRefs } from 'pinia';
 import LeafletMap from './components/LeafletMap.vue';
 import AppSidebar from './components/AppSidebar.vue';
 
-// Map component reference for imperative calls
+const store = useAppStore();
+const { routing } = storeToRefs(store);
+
 const mapRef = ref(null);
 const sidebarRef = ref(null);
 
-// Provide map ref to child components
 provide('mapRef', mapRef);
 
-// Toggle sidebar
+const display = useDisplay();
+const isMobile = computed(() => !display.mdAndUp.value);
+
+const sidebarWasOpen = ref(false);
+
+watch(
+  () => routing.value.selectingStartPoint,
+  (selecting) => {
+    if (!isMobile.value) return; 
+
+    if (selecting) {
+      sidebarWasOpen.value = sidebarRef.value?.getIsOpen() ?? false;
+      sidebarRef.value?.close();
+    } else if (sidebarWasOpen.value) {
+      sidebarRef.value?.open();
+      sidebarWasOpen.value = false;
+    }
+  }
+);
+
 function toggleSidebar() {
   sidebarRef.value?.toggle();
 }
@@ -20,12 +42,9 @@ function toggleSidebar() {
  * Handle optimization results - show squares on map
  */
 function handleOptimized(result) {
-  // result is now {rectangles, metadata} or legacy array
   if (Array.isArray(result)) {
-    // Legacy format - just rectangles
     mapRef.value?.showProposedSquares(result, []);
   } else {
-    // New format with metadata
     mapRef.value?.showProposedSquares(result.rectangles, result.metadata);
   }
 }
@@ -38,10 +57,9 @@ function handleRouteCalculated(routeData) {
 
   // Update store with TSP-sorted squares
   const store = useAppStore();
-  const allSquares = routeData.allSquares; // Route waypoints in TSP order
+  const allSquares = routeData.allSquares; 
 
   if (allSquares && allSquares.length > 0) {
-    // Build new arrays in TSP order
     const tspOrderedRectangles = [];
     const tspOrderedMetadata = [];
     const skippedIndices = [];
@@ -51,23 +69,19 @@ function handleRouteCalculated(routeData) {
     for (let i = 0; i < allSquares.length; i++) {
       const wp = allSquares[i];
 
-      // Skip start point
       if (i === 0 && wp.lat === routeData.waypoints[0].lat && wp.lon === routeData.waypoints[0].lon) {
         continue;
       }
 
-      // Skip final point if roundtrip
       if (store.routing.roundtrip && i === allSquares.length - 1) {
         continue;
       }
 
-      // Check if skipped
       const wasSkipped = wp.hasRoad === false;
       if (wasSkipped) {
         skippedIndices.push(tspOrderedRectangles.length);
       }
 
-      // Find original square by grid coordinates (not array index!)
       if (wp.gridCoords) {
         const originalIndex = store.proposedMetadata.findIndex(meta =>
           meta.gridCoords &&
@@ -85,11 +99,9 @@ function handleRouteCalculated(routeData) {
       }
     }
 
-    // Update store with TSP-sorted data
     store.proposedSquares = tspOrderedRectangles;
     store.proposedMetadata = tspOrderedMetadata;
 
-    // Re-render with skipped indices
     mapRef.value?.showProposedSquares(tspOrderedRectangles, tspOrderedMetadata, skippedIndices);
   }
 }
@@ -113,7 +125,6 @@ function handleKmlLoaded(data) {
         @kml-loaded="handleKmlLoaded"
       />
 
-      <!-- Floating Menu Button -->
       <v-btn
         icon="mdi-menu"
         color="primary"

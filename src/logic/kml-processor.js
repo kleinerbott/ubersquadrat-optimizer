@@ -175,34 +175,27 @@ export function parseKmlFeatures(layer) {
 }
 
 /**
- * Find the ubersquadrat from candidates or fall back to largest feature
- * Uses Turf.js area calculation for accurate comparison
+ * Find the ubersquadrat from candidates (must be explicitly named)
+ * Uses Turf.js area calculation if multiple candidates exist
  * @param {Array} candidates - Array of ubersquadrat candidates
- * @param {Array} features - Array of regular features (fallback)
- * @returns {Object} {coords, size}
+ * @returns {Object} {coords, size} or {coords: null, size: 16} if not found
  */
-export function findUbersquadrat(candidates, features) {
+export function findUbersquadrat(candidates) {
+  if (candidates.length === 0) {
+    return { coords: null, size: 16 };
+  }
+
+  // If multiple ubersquadrat candidates, pick the largest
+  let maxArea = 0;
   let uberCoords = null;
   let uberSize = 16;
 
-  if (candidates.length > 0) {
-    let maxArea = 0;
-    for (const candidate of candidates) {
-      const area = calculateArea(candidate.coords);
-      if (area > maxArea) {
-        maxArea = area;
-        uberCoords = candidate.coords;
-        uberSize = candidate.size;
-      }
-    }
-  } else {
-    let maxArea = 0;
-    for (const feature of features) {
-      const area = calculateArea(feature.outer);
-      if (area > maxArea) {
-        maxArea = area;
-        uberCoords = feature.outer;
-      }
+  for (const candidate of candidates) {
+    const area = calculateArea(candidate.coords);
+    if (area > maxArea) {
+      maxArea = area;
+      uberCoords = candidate.coords;
+      uberSize = candidate.size;
     }
   }
 

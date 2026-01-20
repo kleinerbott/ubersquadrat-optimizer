@@ -15,16 +15,16 @@ const { routing, kmlFilename, ubersquadratSize, visitedSet } = storeToRefs(store
 
 const emit = defineEmits(['optimized', 'route-calculated', 'kml-loaded']);
 
-// Responsive behavior
 const display = useDisplay();
 const isMobile = computed(() => !display.mdAndUp.value);
 
-// Simple toggle state
 const isOpen = ref(false);
 
-// Expose toggle method for parent component
 defineExpose({
-  toggle: () => isOpen.value = !isOpen.value
+  toggle: () => isOpen.value = !isOpen.value,
+  open: () => isOpen.value = true,
+  close: () => isOpen.value = false,
+  getIsOpen: () => isOpen.value
 });
 </script>
 
@@ -58,7 +58,6 @@ defineExpose({
 
       <!-- Scrollable content area -->
       <div class="sidebar-scroll">
-        <!-- KML File Loader -->
         <div class="pa-3">
           <KmlLoader @kml-loaded="(data) => emit('kml-loaded', data)" />
         </div>
@@ -74,19 +73,16 @@ defineExpose({
 
         <v-divider />
 
-        <!-- Routing Section -->
         <div class="pa-3">
           <div class="text-subtitle-2 mb-2">Routing</div>
           <RouteControls @route-calculated="(route) => emit('route-calculated', route)" />
 
-          <!-- Route Stats (shown when route is calculated) -->
           <RouteStats
             v-if="routing.currentRoute"
             :route="routing.currentRoute"
             class="mt-3"
           />
 
-          <!-- Export Buttons (shown when route is calculated) -->
           <ExportButtons
             v-if="routing.currentRoute"
             :route="routing.currentRoute"
@@ -97,7 +93,6 @@ defineExpose({
     </div>
   </aside>
 
-  <!-- Overlay scrim for mobile -->
   <div
     v-if="isOpen"
     class="sidebar-overlay"
@@ -106,7 +101,6 @@ defineExpose({
 </template>
 
 <style scoped>
-/* Desktop: sidebar always visible, positioned normally */
 .sidebar {
   position: relative;
   height: 100vh;
@@ -147,12 +141,12 @@ defineExpose({
 }
 
 /* Mobile: sidebar hidden by default, slides in as overlay */
-@media (max-width: 960px) {
+@media (max-width: 800px) {
   .sidebar {
     position: fixed;
     top: 0;
     right: 0;
-    width: 85vw;
+    width: 80vw;
     transform: translateX(100%);
     transition: transform 0.3s ease-in-out;
   }

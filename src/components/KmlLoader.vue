@@ -17,13 +17,11 @@ onMounted(async () => {
   // Try to load cached KML on startup
   const cached = loadCachedKml();
   if (cached) {
-    console.log(`Auto-loading cached KML: ${cached.filename}`);
     try {
       await processKmlContent(cached.content, cached.filename);
     } catch (err) {
-      console.error('Error auto-loading cached KML:', err);
+      console.error('Fehler beim laden der gecashten KML-Datei:', err);
       error.value = `Cached KML load failed: ${err.message}`;
-      // Reset loading state if stuck
       store.setLoading(false);
     }
   }
@@ -58,35 +56,27 @@ async function processKmlContent(kmlContent, filename) {
   store.resetState();
 
   try {
-    // Parse KML string to DOM
     const parser = new DOMParser();
     const kmlDom = parser.parseFromString(kmlContent, 'text/xml');
 
-    // Check for parsing errors
     const parserError = kmlDom.querySelector('parsererror');
     if (parserError) {
-      throw new Error('Invalid KML file format');
+      throw new Error('Ungültige KML-Datei');
     }
 
-    // Convert KML to GeoJSON
     const geojson = kml(kmlDom);
 
-    // Create Leaflet layer from GeoJSON
     const layer = L.geoJSON(geojson);
 
-    // Parse KML features
     const { features, allPolygons, candidates } = parseKmlFeatures(layer);
 
-    // Find ubersquadrat
-    const ubersquadrat = findUbersquadrat(candidates, features);
+    const ubersquadrat = findUbersquadrat(candidates);
     if (!ubersquadrat.coords) {
-      throw new Error('Kein Ubersquadrat gefunden');
+      throw new Error('Kein Übersquadrat gefunden. Die KML-Datei muss ein Polygon mit dem Namen "ubersquadrat" oder mindestens ein anderes Polygon enthalten.');
     }
 
-    // Calculate grid parameters
     const gridParams = calculateGridParameters(ubersquadrat.coords, ubersquadrat.size);
 
-    // Build visited set
     const visitedSet = scanAndBuildVisitedSet(allPolygons, gridParams.baseSquare, gridParams);
 
     // Update store
@@ -94,7 +84,6 @@ async function processKmlContent(kmlContent, filename) {
     store.setVisitedSet(visitedSet);
     store.setKmlFilename(filename);
 
-    // Emit event for map update (include the layer for visualization)
     emit('kml-loaded', {
       gridParams,
       bounds: gridParams.bounds,
@@ -103,7 +92,7 @@ async function processKmlContent(kmlContent, filename) {
 
     console.timeEnd('Timer KML Laden');
   } catch (err) {
-    console.error('Error processing KML:', err);
+    console.error('Fehler beim Verarbeiten der KML:', err);
     console.timeEnd('Timer KML Laden');
     error.value = err.message;
     throw err; // Re-throw to be caught by onMounted

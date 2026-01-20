@@ -37,12 +37,12 @@ onUnmounted(() => {
 function initializeMap() {
   map = L.map(mapContainer.value, {
     // Touch interaction settings for mobile
-    tap: true,                // Enable tap events on mobile
-    tapTolerance: 15,         // Pixel tolerance for tap events
-    touchZoom: true,          // Pinch to zoom
-    bounceAtZoomLimits: true, // Bounce effect when zooming at limits
-    dragging: true,           // Touch drag
-    zoomControl: true         // Show zoom buttons (helpful on mobile)
+    tap: true,                
+    tapTolerance: 15,         
+    touchZoom: true,          
+    bounceAtZoomLimits: true, 
+    dragging: true,           
+    zoomControl: true         
   }).setView([51.7, 8.3], 10);
 
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -95,21 +95,17 @@ watch(
 function onKmlLoaded(data) {
   const { gridParams, bounds, kmlLayer } = data;
 
-  // Clear existing layers
   layers.visited.clearLayers();
   layers.proposed.clearLayers();
   layers.grid.clearLayers();
   layers.route.clearLayers();
 
-  // Add the KML layer with visited polygons
   if (kmlLayer) {
     kmlLayer.addTo(layers.visited);
   }
 
-  // Visualize ubersquadrat (blue rectangle)
   visualizeUbersquadrat(gridParams.baseSquare, gridParams, layers.visited);
 
-  // Draw grid lines
   drawGridLines(gridParams.baseSquare, gridParams, layers.grid);
 
   // Fit map to ubersquadrat bounds
@@ -132,18 +128,17 @@ function showProposedSquares(squares, metadata = [], skippedIndices = []) {
     const meta = metadata[index];
     const isSkipped = skippedIndices.includes(index);
 
-    // Create rectangle with conditional styling
     const rect = L.rectangle(rectangle, {
-      color: isSkipped ? '#d32f2f' : CONFIG.PROPOSED_COLOR, // Red border for skipped
-      fillColor: isSkipped ? '#ffcdd2' : CONFIG.PROPOSED_COLOR, // Light red fill for skipped
+      color: isSkipped ? '#d32f2f' : CONFIG.PROPOSED_COLOR, 
+      fillColor: isSkipped ? '#ffcdd2' : CONFIG.PROPOSED_COLOR, 
       fillOpacity: isSkipped ? 0.4 : CONFIG.PROPOSED_OPACITY,
-      weight: isSkipped ? 3 : 2 // Thicker border for skipped
+      weight: isSkipped ? 3 : 2 
     });
 
     // Add hover tooltip (quick summary)
     if (meta) {
       const tooltipText = isSkipped
-        ? `#${meta.selectionOrder}: ÜBERSPRUNGEN (keine Straßen)`
+        ? `#${meta.selectionOrder}: ÜBERSPRUNGEN (keine passenden Straßen)`
         : `#${meta.selectionOrder}: ${meta.score.toLocaleString()} points`;
       rect.bindTooltip(tooltipText, {
         permanent: false,
