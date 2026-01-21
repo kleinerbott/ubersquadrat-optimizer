@@ -19,7 +19,7 @@
  * - holes: Prioritize filling gaps
  * - balanced: Equal weight to both
  */
-export const MODE_MULTIPLIERS = {
+const MODE_MULTIPLIERS = {
   edge: { edge: 3, hole: 0.3 },
   holes: { edge: 0.3, hole: 2 },
   balanced: { edge: 1, hole: 1 }
@@ -30,7 +30,7 @@ export const MODE_MULTIPLIERS = {
 /**
  * Convert grid coordinates (i,j) to rectangle bounds [lat,lon]
  */
-export function rectFromIJ(i, j, originLat, originLon, LAT_STEP, LON_STEP) {
+function rectFromIJ(i, j, originLat, originLon, LAT_STEP, LON_STEP) {
   const s = originLat + i * LAT_STEP;
   const w = originLon + j * LON_STEP;
   const n = s + LAT_STEP;
@@ -39,25 +39,10 @@ export function rectFromIJ(i, j, originLat, originLon, LAT_STEP, LON_STEP) {
 }
 
 /**
- * Convert square coordinates to "i,j" key string
- */
-export function getSquareKey(i, j) {
-  return `${i},${j}`;
-}
-
-/**
- * Parse "i,j" key string to {i, j} coordinates
- */
-export function parseSquareKey(key) {
-  const [i, j] = key.split(',').map(Number);
-  return { i, j };
-}
-
-/**
  * Calculate layer distance from Übersquadrat border
  * Returns {distI, distJ, total} where total is Manhattan distance
  */
-export function calculateLayerDistance(i, j, base) {
+function calculateLayerDistance(i, j, base) {
   const distI = Math.max(0, Math.max(base.minI - i - 1, i - base.maxI - 1));
   const distJ = Math.max(0, Math.max(base.minJ - j - 1, j - base.maxJ - 1));
   return { distI, distJ, total: distI + distJ };
@@ -66,7 +51,7 @@ export function calculateLayerDistance(i, j, base) {
 /**
  * Calculate Manhattan distance between two grid points
  */
-export function manhattanDistance(p1, p2) {
+function manhattanDistance(p1, p2) {
   return Math.abs(p1.i - p2.i) + Math.abs(p1.j - p2.j);
 }
 
@@ -74,7 +59,7 @@ export function manhattanDistance(p1, p2) {
  * Get search area bounds around Übersquadrat
  * @param {number} radius - Number of layers to search (default: 5)
  */
-export function getSearchBounds(base, radius = 5) {
+function getSearchBounds(base, radius = 5) {
   return {
     minI: base.minI - radius,
     maxI: base.maxI + radius,
@@ -86,14 +71,14 @@ export function getSearchBounds(base, radius = 5) {
 /**
  * Get keys of 4 neighboring squares (N, S, E, W)
  */
-export function getNeighborKeys(i, j) {
+function getNeighborKeys(i, j) {
   return [[i - 1, j], [i + 1, j], [i, j - 1], [i, j + 1]].map(([ni, nj]) => `${ni},${nj}`);
 }
 
 /**
  * Check if square is on the immediate border (Layer 0) of Übersquadrat
  */
-export function isOnUbersquadratBorder(i, j, base) {
+function isOnUbersquadratBorder(i, j, base) {
   return (
     (i === base.maxI + 1 && j >= base.minJ - 1 && j <= base.maxJ + 1) ||
     (i === base.minI - 1 && j >= base.minJ - 1 && j <= base.maxJ + 1) ||
@@ -108,7 +93,7 @@ export function isOnUbersquadratBorder(i, j, base) {
  * Analyze a single edge (N, S, E, or W) of the Übersquadrat
  * Returns edge completion statistics
  */
-export function analyzeEdge(name, fixedCoord, start, end, type, visitedSet) {
+function analyzeEdge(name, fixedCoord, start, end, type, visitedSet) {
   const squares = [];
   let unvisitedCount = 0;
 
@@ -140,7 +125,7 @@ export function analyzeEdge(name, fixedCoord, start, end, type, visitedSet) {
  * Analyze all 4 edges of the Übersquadrat
  * Returns {N, S, E, W} edge analysis objects
  */
-export function analyzeEdges(base, visitedSet) {
+function analyzeEdges(base, visitedSet) {
   const edges = {
     N: analyzeEdge('N', base.maxI + 1, base.minJ, base.maxJ, 'row', visitedSet),
     S: analyzeEdge('S', base.minI - 1, base.minJ, base.maxJ, 'row', visitedSet),
@@ -162,7 +147,7 @@ export function analyzeEdges(base, visitedSet) {
  * @param {Set} visitedSet - Set of visited squares from KML
  * @returns {Array} Array of {i, j, key} objects in the contiguous region
  */
-export function findContiguousRegion(startI, startJ, visited, isInBounds, visitedSet) {
+function findContiguousRegion(startI, startJ, visited, isInBounds, visitedSet) {
   const region = [];
   const queue = [[startI, startJ]];
   const regionVisited = new Set();
@@ -204,7 +189,7 @@ export function findContiguousRegion(startI, startJ, visited, isInBounds, visite
  * @param {number} maxHoleSize - Maximum hole size to keep (1-20)
  * @returns {Array} Array of hole objects {id, squares, size, avgLayer}
  */
-export function detectHoles(base, visitedSet, maxHoleSize, LAT_STEP, LON_STEP, originLat, originLon) {
+function detectHoles(base, visitedSet, maxHoleSize) {
   const searchBounds = getSearchBounds(base, 5);
 
   function isInSearchBounds(i, j) {
@@ -256,7 +241,7 @@ export function detectHoles(base, visitedSet, maxHoleSize, LAT_STEP, LON_STEP, o
  * @param {Array} holes - Array of hole objects
  * @returns {Map} Map of "i,j" → hole object
  */
-export function buildHoleMap(holes) {
+function buildHoleMap(holes) {
   const squareToHoleMap = new Map();
   holes.forEach(hole => {
     hole.squares.forEach(sq => {
@@ -299,7 +284,7 @@ export function optimizeSquare(
   const edges = analyzeEdges(base, visitedSet);
 
   // === PHASE 2: HOLE DETECTION ===
-  const holes = detectHoles(base, visitedSet, maxHoleSize, LAT_STEP, LON_STEP, originLat, originLon);
+  const holes = detectHoles(base, visitedSet, maxHoleSize);
   const squareToHoleMap = buildHoleMap(holes);
 
   // === PHASE 3: FIND ALL PERIMETER SQUARES ===
@@ -312,10 +297,8 @@ export function optimizeSquare(
       for (let j = bounds.minJ; j <= bounds.maxJ; j++) {
         const key = `${i},${j}`;
 
-        // Skip if already visited
         if (visitedSet.has(key)) continue;
 
-        // CRITICAL: Only consider squares OUTSIDE the ubersquadrat
         const positions = {
           N: i > base.maxI,
           S: i < base.minI,
@@ -323,13 +306,10 @@ export function optimizeSquare(
           W: j < base.minJ
         };
 
-        // Calculate layer distance from ubersquadrat boundary
         const layerDist = calculateLayerDistance(i, j, base).total;
 
-        // Only include squares within searchRadius layers from ubersquadrat
         if (layerDist > 5) continue;
 
-        // Determine which edge based on position relative to ubersquadrat boundary
         const edge = Object.keys(positions).filter(k => positions[k]).join('');
 
         candidates.set(key, { i, j, edge, key });
@@ -413,9 +393,7 @@ export function optimizeSquare(
     score += scoreBreakdown.adjacencyBonus;
 
     // === DIRECTION FILTER ===
-    // direction is now an array of selected directions (e.g., ['N', 'E'])
     if (Array.isArray(direction) && direction.length < 4) {
-      // Not all directions selected - apply filtering
       const matches = {
         N: square.i > base.maxI,
         S: square.i < base.minI,
@@ -423,13 +401,10 @@ export function optimizeSquare(
         W: square.j < base.minJ
       };
 
-      // Check if square matches ANY of the selected directions
       const matchesAnyDirection = direction.some(dir => matches[dir]);
 
-      // If doesn't match any selected direction, apply penalty
       if (!matchesAnyDirection) score -= 1000000;
     }
-    // If all 4 directions selected or not an array, no filtering (all squares allowed)
 
     return { ...square, score, scoreBreakdown, layerDistance, hole };
   });
@@ -465,7 +440,6 @@ export function optimizeSquare(
     selected.push(remaining.shift());
   }
 
-  // Create rectangles
   const rectangles = selected.map(s => rectFromIJ(s.i, s.j, originLat, originLon, LAT_STEP, LON_STEP));
 
   // Create metadata for each selected square

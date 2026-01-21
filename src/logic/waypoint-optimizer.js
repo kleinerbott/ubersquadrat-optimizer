@@ -1,6 +1,6 @@
 /**
  * Waypoint Optimizer Module
- * Finds optimal waypoints on roads within squares using Turf.js
+ * Finds optimal waypoints on roads within squares 
  */
 
 import * as turf from '@turf/turf';

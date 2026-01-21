@@ -8,7 +8,6 @@
 import { solveTSP, calculateRouteDistance } from './tsp-solver.js';
 import { fetchRoadsInArea } from './road-fetcher.js';
 import { optimizeWaypoints, optimizeWaypointsWithSequence, calculateCombinedBounds } from './waypoint-optimizer.js';
-import { tryProfilesWithFallback } from './routing-strategies.js';
 import { pointsMatch } from './bounds-utils.js';
 import { callBRouterAPI, parseBRouterResponse } from './brouter-api.js';
 
@@ -206,7 +205,7 @@ export async function calculateRoute(proposedLayer, startPoint, bikeType, roundt
         return true;
       });
 
-      // Map TSP waypoints back to original squares with bounds
+      // Map TSP waypoints back to original squares
       const orderedSquares = routeSquaresOnly.map((waypoint, idx) => {
         const matchingSquare = squares.find(s => {
           const roughWp = roughWaypoints.find(rw => pointsMatch(rw, waypoint));
@@ -219,7 +218,6 @@ export async function calculateRoute(proposedLayer, startPoint, bikeType, roundt
         return matchingSquare || { ...waypoint, bounds: null };
       });
 
-      // Optimize waypoints WITH SEQUENCE for this specific order
       const fineOptimization = optimizeWaypointsWithSequence(orderedSquares, roads, startPoint, roundtrip);
       finalWaypoints = fineOptimization.waypoints;
 
@@ -255,8 +253,54 @@ export async function calculateRoute(proposedLayer, startPoint, bikeType, roundt
       };
     });
   }
+  
+/**
+ * Tries multiple BRouter profiles with automatic fallback
+ *
+ * @param {Array} profiles - Array of profile names to try
+ * @param {Array} waypoints - Array of waypoints
+ * @param {string} apiUrl - BRouter API URL
+ * @returns {Promise<Object>} {success, geojson, profile, attemptNumber, error}
+ */
+async function tryProfilesWithFallback(profiles, waypoints, apiUrl) {
+  let lastError = null;
 
-  // Build final route (order is already determined by Phase 1 TSP)
+  for (let i = 0; i < profiles.length; i++) {
+    const profile = profiles[i];
+
+    try {
+      const geojson = await callBRouterAPI(waypoints, profile, apiUrl);
+      return {
+        success: true,
+        geojson,
+        profile,
+        attemptNumber: i + 1
+      };
+    } catch (error) {
+      lastError = error;
+
+      if (!isCoverageError(error)) {
+        break;
+      }
+    }
+  }
+
+  return { success: false, error: lastError };
+}
+
+/**
+ * Helper: Detect coverage errors from BRouter
+ *
+ * @param {Error} error - Error object
+ * @returns {boolean} True if error indicates data coverage issue
+ */
+function isCoverageError(error) {
+  return error.message.includes('nicht verfügbaren Kartenbereichs') ||
+         error.message.includes('not mapped');
+}
+
+
+  // Build final route 
   const finalRoute = [startPoint, ...finalWaypoints, ...(roundtrip ? [startPoint] : [])];
   const finalDistance = calculateRouteDistance(finalRoute);
   const finalTspResult = { route: finalRoute, distance: finalDistance };
@@ -272,7 +316,6 @@ export async function calculateRoute(proposedLayer, startPoint, bikeType, roundt
       continue;
     }
 
-    // Check if this waypoint has roads
     if (wp.hasRoad === false) {
       skippedSquareCoords.push({
         lat: wp.lat,

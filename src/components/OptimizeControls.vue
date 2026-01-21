@@ -54,7 +54,7 @@ function handleOptimize() {
       <v-slider
         v-model="settings.numSquares"
         :min="1"
-        :max="20"
+        :max="30"
         :step="1"
         thumb-label
         hide-details

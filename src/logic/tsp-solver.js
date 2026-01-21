@@ -80,45 +80,50 @@ export function solveTSP(points, startPoint, roundtrip = false, optimize = true)
 }
 
 /**
- * 2-opt optimization to improve route
- * Tries to remove crossing paths by reversing segments
- * @param {Array} route - Initial route
+ * 2-opt optimization to improve route by removing crossing paths.
+ *
+ * Instead of recalculating the entire route distance for each swap attempt,
+ * we only compare the 4 affected edges (O(1) instead of O(n) per check).
+ *
+ * @param {Array} route - Initial route as array of {lat, lon} points
  * @param {number} maxIterations - Maximum optimization iterations
  * @returns {Array} Optimized route
  */
 export function twoOptOptimize(route, maxIterations = 100) {
   if (route.length < 4) return route;
 
+  const optimizedRoute = [...route];
+  const n = optimizedRoute.length;
   let improved = true;
   let iterations = 0;
-  let currentRoute = [...route];
-  let currentDistance = calculateRouteDistance(currentRoute);
 
   while (improved && iterations < maxIterations) {
     improved = false;
     iterations++;
 
-    for (let i = 1; i < currentRoute.length - 2; i++) {
-      for (let j = i + 1; j < currentRoute.length - 1; j++) {
-        const newRoute = [
-          ...currentRoute.slice(0, i),
-          ...currentRoute.slice(i, j + 1).reverse(),
-          ...currentRoute.slice(j + 1)
-        ];
+    for (let i = 1; i < n - 2 && !improved; i++) {
+      for (let j = i + 1; j < n - 1 && !improved; j++) {
+        const [a, b, c, d] = [optimizedRoute[i - 1], optimizedRoute[i], optimizedRoute[j], optimizedRoute[j + 1]];
 
-        const newDistance = calculateRouteDistance(newRoute);
+        const currentCost =
+          turf.distance(turf.point([a.lon, a.lat]), turf.point([b.lon, b.lat])) +
+          turf.distance(turf.point([c.lon, c.lat]), turf.point([d.lon, d.lat]));
 
-        if (newDistance < currentDistance) {
-          currentRoute = newRoute;
-          currentDistance = newDistance;
+        const newCost =
+          turf.distance(turf.point([a.lon, a.lat]), turf.point([c.lon, c.lat])) +
+          turf.distance(turf.point([b.lon, b.lat]), turf.point([d.lon, d.lat]));
+
+        if (newCost < currentCost) {
+          // Reverse segment [i..j]
+          const reversed = optimizedRoute.slice(i, j + 1).reverse();
+          optimizedRoute.splice(i, j - i + 1, ...reversed);
           improved = true;
-          break;
         }
       }
-      if (improved) break;
     }
   }
 
-  console.log(`2-opt: ${iterations} iterations, ${currentDistance.toFixed(2)} km`);
-  return currentRoute;
+  const finalDistance = calculateRouteDistance(optimizedRoute);
+  console.log(`2-opt: ${iterations} iterations, ${finalDistance.toFixed(2)} km`);
+  return optimizedRoute;
 }

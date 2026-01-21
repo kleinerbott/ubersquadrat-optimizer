@@ -137,32 +137,3 @@ export function loadCachedKml() {
   return null;
 }
 
-/**
- * Clear cached KML from LocalStorage
- */
-export function clearCache() {
-  try {
-    localStorage.removeItem(STORAGE_KEY_FILENAME);
-    localStorage.removeItem(STORAGE_KEY_CONTENT);
-  } catch (error) {
-    // Silent fail
-  }
-}
-
-/**
- * Get cache info (size, filename)
- * @returns {{filename: string | null, size: number}}
- */
-export function getCacheInfo() {
-  try {
-    const filename = localStorage.getItem(STORAGE_KEY_FILENAME);
-    const content = localStorage.getItem(STORAGE_KEY_CONTENT);
-
-    return {
-      filename: filename,
-      size: content ? content.length : 0
-    };
-  } catch (error) {
-    return { filename: null, size: 0 };
-  }
-}
