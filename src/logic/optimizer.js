@@ -11,6 +11,8 @@
  * Phase 5: Greedy Selection - Select best squares minimizing travel distance
  */
 
+import { CONFIG } from "./config";
+
 // ===== CONSTANTS =====
 
 /**
@@ -20,9 +22,9 @@
  * - balanced: Equal weight to both
  */
 const MODE_MULTIPLIERS = {
-  edge: { edge: 3, hole: 0.3 },
-  holes: { edge: 0.3, hole: 2 },
-  balanced: { edge: 1, hole: 1 }
+  edge: { edge: 3, hole: 0.3, layerPenalty: 1.0 },
+  holes: { edge: 0.3, hole: 3, layerPenalty: 0.5 },
+  balanced: { edge: 1, hole: 1, layerPenalty: 1.0 }
 };
 
 // ===== UTILITY FUNCTIONS =====
@@ -49,17 +51,10 @@ function calculateLayerDistance(i, j, base) {
 }
 
 /**
- * Calculate Manhattan distance between two grid points
- */
-function manhattanDistance(p1, p2) {
-  return Math.abs(p1.i - p2.i) + Math.abs(p1.j - p2.j);
-}
-
-/**
  * Get search area bounds around Übersquadrat
  * @param {number} radius - Number of layers to search (default: 5)
  */
-function getSearchBounds(base, radius = 5) {
+function getSearchBounds(base, radius = CONFIG.SCAN_RADIUS_RANGE) {
   return {
     minI: base.minI - radius,
     maxI: base.maxI + radius,
@@ -340,6 +335,7 @@ export function optimizeSquare(
     const layerDistance = isBorder ? 0 : calculateLayerDistance(square.i, square.j, base).total;
 
     // Strongly prioritize proximity with bonuses AND penalties
+    // (layerPenalty will be applied below after mode is known)
     if (layerDistance === 0) scoreBreakdown.layerScore = 10000;
     else if (layerDistance === 1) scoreBreakdown.layerScore = 5000;
     else if (layerDistance === 2) scoreBreakdown.layerScore = 2000;
@@ -347,43 +343,46 @@ export function optimizeSquare(
     else if (layerDistance === 4) scoreBreakdown.layerScore = -2000;
     else if (layerDistance >= 5) scoreBreakdown.layerScore = -10000;
 
-    score += scoreBreakdown.layerScore;
-
-    // === EDGE COMPLETION ===
+    // === EDGE COMPLETION MODE ===
     const maxEdgeCompletion = ['N', 'S', 'E', 'W']
       .filter(dir => square.edge.includes(dir))
       .reduce((max, dir) => Math.max(max, edges[dir].completion), 0);
-    let edgeBonusRaw = Math.floor(maxEdgeCompletion * 5);
+    let edgeBonusRaw = Math.floor(maxEdgeCompletion * 30);  // max 3,000 raw
 
-    // === HOLE FILLING ===
+    // === HOLE FILLING MODE ===
     const squareKey = `${square.i},${square.j}`;
     const hole = squareToHoleMap.get(squareKey);
     let holeSizeBonusRaw = 0;
     let holeCompletionBonus = 0;
 
     if (hole) {
-      // Reduce base multiplier: 2000 → 800
-      // Apply layer-based reduction
-      let holeMultiplier = 800;
-      if (layerDistance >= 3) holeMultiplier = 400; // 50%
-      if (layerDistance >= 5) holeMultiplier = 200; // 25%
+      // Apply layer-based reduction (normalized to be comparable to edge bonus)
+      let holeMultiplier = 200;   // max 4,000 for size 20
+      if (layerDistance >= 3) holeMultiplier = 150;
+      if (layerDistance >= 5) holeMultiplier = 75;
 
       holeSizeBonusRaw = hole.size * holeMultiplier;
 
-      // Keep completion bonus but reduce: 3000 → 1500
       const unvisitedInHole = hole.squares.filter(
         sq => !visitedSet.has(sq.key) && sq.key !== squareKey
       ).length;
       if (unvisitedInHole === 0) {
-        holeCompletionBonus = 1500;
-        score += holeCompletionBonus;
+        holeCompletionBonus = 1500;  // Will be mode-affected below
       }
     }
 
     // === MODE MULTIPLIERS ===
     const mult = MODE_MULTIPLIERS[optimizationMode] || MODE_MULTIPLIERS.balanced;
+
+    // Apply layer penalty reduction in holes mode (negative scores only)
+    if (scoreBreakdown.layerScore < 0 && mult.layerPenalty !== undefined) {
+      scoreBreakdown.layerScore = Math.floor(scoreBreakdown.layerScore * mult.layerPenalty);
+    }
+    score += scoreBreakdown.layerScore;
+
     scoreBreakdown.edgeBonus = Math.floor(edgeBonusRaw * mult.edge);
-    scoreBreakdown.holeBonus = Math.floor(holeSizeBonusRaw * mult.hole);
+    // Include hole completion bonus in mode multiplication
+    scoreBreakdown.holeBonus = Math.floor((holeSizeBonusRaw + holeCompletionBonus) * mult.hole);
 
     score += scoreBreakdown.edgeBonus + scoreBreakdown.holeBonus;
 
@@ -409,36 +408,15 @@ export function optimizeSquare(
     return { ...square, score, scoreBreakdown, layerDistance, hole };
   });
 
-  // === PHASE 5: GREEDY ROUTE SELECTION ===
-  const selected = [];
-  const remaining = [...scored];
-
-  if (remaining.length === 0) {
+  // === PHASE 5: SELECT TOP N BY SCORE ===
+  // TSP in router.js handles route optimization, so we just select by score
+  if (scored.length === 0) {
     return { rectangles: [], metadata: [] };
   }
 
-  // Select first square (highest score)
-  remaining.sort((a, b) => b.score - a.score);
-  selected.push(remaining.shift());
-
-  // Greedily select remaining squares (proximity + hole completion)
-  while (selected.length < targetNew && remaining.length > 0) {
-    const last = selected[selected.length - 1];
-
-    remaining.forEach(sq => {
-      const dist = manhattanDistance(sq, last);
-      sq.routeScore = sq.score - dist * 100;
-
-      // Bonus: Complete holes that have started to be filled
-      const sqHole = squareToHoleMap.get(`${sq.i},${sq.j}`);
-      if (sqHole && selected.some(s => squareToHoleMap.get(`${s.i},${s.j}`)?.id === sqHole.id)) {
-        sq.routeScore += 1500;
-      }
-    });
-
-    remaining.sort((a, b) => b.routeScore - a.routeScore);
-    selected.push(remaining.shift());
-  }
+  // Sort by score descending and take top N
+  scored.sort((a, b) => b.score - a.score);
+  const selected = scored.slice(0, targetNew);
 
   const rectangles = selected.map(s => rectFromIJ(s.i, s.j, originLat, originLon, LAT_STEP, LON_STEP));
 

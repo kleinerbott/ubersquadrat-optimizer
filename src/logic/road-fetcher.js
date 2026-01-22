@@ -132,8 +132,7 @@ const OVERPASS_INSTANCES = [
  * @param {Function} onProgress - Optional callback for progress updates
  * @returns {Promise<Array>} Array of GeoJSON road features
  */
-export async function fetchRoadsInArea(bounds, bikeType = 'trekking', maxRetries = 2, onProgress = null) {
-  // Normalize bounds format and add buffer (0.01 degrees ~ 1km)
+export async function fetchRoadsInArea(bounds, bikeType = 'trekking', maxRetries = 3, onProgress = null) {
   const normalizedBounds = normalizeBounds(bounds);
   const bufferedBounds = expandBounds(normalizedBounds, 0.01);
 
@@ -215,7 +214,7 @@ export async function fetchRoadsInArea(bounds, bikeType = 'trekking', maxRetries
         const shouldRetry = error.shouldRetry || error.name === 'TypeError' || error.message.includes('Failed to fetch');
 
         if (shouldRetry && attempt <= maxRetries) {
-          const delay = 2000;
+          const delay = 1000;
           console.log(`[RoadFetcher] Retrying in ${delay / 1000}s...`);
           await new Promise(resolve => setTimeout(resolve, delay));
           continue; 

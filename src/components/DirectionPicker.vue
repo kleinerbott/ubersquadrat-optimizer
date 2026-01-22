@@ -20,10 +20,8 @@ function toggleDirection(dir) {
 
 function toggleAll() {
   if (allSelected.value) {
-    // If all selected, deselect all except first
     settings.value.directions = ['N'];
   } else {
-    // Select all
     store.selectAllDirections();
   }
 }
@@ -31,7 +29,7 @@ function toggleAll() {
 
 <template>
   <div>
-    <div class="text-caption mb-1">Richtung</div>
+    <div class="text-caption mb-1">Himmelsrichtung der Erweiterung</div>
     <div class="direction-buttons">
       <v-btn
         v-for="dir in directions"

@@ -17,7 +17,7 @@ const statusMessage = ref(null);
 
 const bikeTypes = [
   { title: 'Standard', value: 'trekking' },
-  { title: 'Gravel', value: 'gravel' },
+  { title: 'Mountainbike', value: 'hiking-mountain' },
   { title: 'Rennrad', value: 'fastbike' }
 ];
 

@@ -73,7 +73,7 @@ defineExpose({
       <!-- Header -->
       <v-list-item class="sidebar-header">
         <v-list-item-title class="text-h6">
-          Squadrat-Optimizer
+          Ubersquadrat-Optimizer
         </v-list-item-title>
         <v-list-item-subtitle v-if="kmlFilename">
           {{ kmlFilename }}
@@ -95,7 +95,7 @@ defineExpose({
 
         <!-- Optimization Controls -->
         <div class="pa-3">
-          <div class="text-subtitle-2 mb-2">Optimierung</div>
+          <div class="text-subtitle-2 mb-2">Optimierungs-Einstellungen</div>
           <OptimizeControls @optimized="(squares) => emit('optimized', squares)" />
           <DirectionPicker class="mt-3" />
         </div>

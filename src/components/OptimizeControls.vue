@@ -51,52 +51,52 @@ function handleOptimize() {
     <!-- Strategic Mode Controls -->
     <div>
       <!-- Number of squares slider -->
+      <span class="text-caption">Neue Quadrate:</span>
       <v-slider
         v-model="settings.numSquares"
         :min="1"
         :max="30"
         :step="1"
+        show-ticks
         thumb-label
         hide-details
         color="primary"
+        class="ms-3"
       >
         <template #prepend>
-          <span class="text-caption">Neue Quadrate</span>
-        </template>
-        <template #append>
           <span class="text-body-2 font-weight-bold">{{ settings.numSquares }}</span>
         </template>
       </v-slider>
 
-      <!-- Optimization mode -->
-      <v-select
-        v-model="settings.mode"
-        :items="optimizationModes"
-        label="Modus"
-        density="compact"
-        hide-details
-        variant="outlined"
-        class="mt-3"
-      />
 
       <!-- Max hole size slider -->
+      <span class="text-caption mb-0">Maximale Lochgröße:</span>
       <v-slider
         v-model="settings.maxHoleSize"
         :min="1"
         :max="10"
         :step="1"
+        show-ticks
         thumb-label
         hide-details
         color="primary"
-        class="mt-3"
+        class="ms-3"
       >
         <template #prepend>
-          <span class="text-caption">Max. Lochgröße</span>
-        </template>
-        <template #append>
           <span class="text-body-2 font-weight-bold">{{ settings.maxHoleSize }}</span>
         </template>
       </v-slider>
+
+         <!-- Optimization mode -->
+      <v-select
+        v-model="settings.mode"
+        :items="optimizationModes"
+        label="Optimierungs-Modus"
+        density="compact"
+        hide-details
+        variant="outlined"
+        class="mt-3"
+      />
     </div>
 
     <!-- Optimize button -->

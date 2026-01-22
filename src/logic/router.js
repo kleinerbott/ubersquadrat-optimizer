@@ -337,7 +337,7 @@ function isCoverageError(error) {
   // Define profile fallback order
   const profileFallbacks = {
     'trekking': ['fastbike', 'trekking-ignore-cr', 'trekking-noferries'],
-    'gravel': ['trekking', 'trekking-ignore-cr'],
+    'hiking-mountain': ['trekking', 'trekking-ignore-cr'],
     'fastbike': ['fastbike', 'fastbike-lowtraffic']
   };
   const profilesToTry = [bikeType, ...(profileFallbacks[bikeType] || [])];
