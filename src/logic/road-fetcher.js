@@ -153,7 +153,6 @@ export async function fetchRoadsFromInstance(bounds, bikeType, instanceUrl, maxR
 
       // Handle rate limiting - retry with delay
       if (response.status === 429) {
-        console.warn(`[RoadFetcher] 429 Rate Limited on ${instanceName} (attempt ${attempt})`);
         if (attempt <= maxRetries) {
           await new Promise(resolve => setTimeout(resolve, 2000)); // 2s for rate limit
           continue;
@@ -163,7 +162,6 @@ export async function fetchRoadsFromInstance(bounds, bikeType, instanceUrl, maxR
 
       // Handle server overload - retry with delay
       if (response.status === 504) {
-        console.warn(`[RoadFetcher] 504 Timeout on ${instanceName} (attempt ${attempt})`);
         if (attempt <= maxRetries) {
           await new Promise(resolve => setTimeout(resolve, 1000));
           continue;
@@ -195,12 +193,10 @@ export async function fetchRoadsFromInstance(bounds, bikeType, instanceUrl, maxR
       const isNetworkError = error.name === 'TypeError' || error.message.includes('Failed to fetch');
 
       if (isNetworkError && attempt <= maxRetries) {
-        console.warn(`[RoadFetcher] Network error on ${instanceName}, retrying...`);
         await new Promise(resolve => setTimeout(resolve, 1000));
         continue;
       }
 
-      console.warn(`[RoadFetcher] ${instanceName} failed: ${error.message}`);
       return { roads: [], success: false, error: error.message, instanceUrl };
     }
   }

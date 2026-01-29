@@ -1,6 +1,5 @@
 import * as turf from '@turf/turf';
 import { normalizeBounds, combineBounds, boundsToMinMax, getBoundsCenter } from './bounds-utils.js';
-import { CONFIG } from './config.js';
 
 /**
  * Create a Turf.js polygon from square bounds
@@ -234,37 +233,6 @@ function sortCandidates(candidates, prevPoint, nextPoint, squareCenter) {
 }
 
 /**
- * Log candidates for debugging (grouped by type)
- * @param {Array} candidates - Sorted candidates
- * @param {Object} square - Square with gridCoords
- * @param {number} squareIndex - Square index
- * @param {number} roadsCount - Number of roads in square
- */
-function logCandidates(candidates, square, squareIndex, roadsCount) {
-  const gridStr = square.gridCoords ? `(${square.gridCoords.i},${square.gridCoords.j})` : `#${squareIndex}`;
-  console.group(`[Waypoint] Square ${gridStr}: ${candidates.length} candidates, ${roadsCount} roads`);
-
-  // Group by type
-  const byType = {};
-  candidates.forEach((c, idx) => {
-    if (!byType[c.type]) byType[c.type] = [];
-    byType[c.type].push({ idx, c });
-  });
-
-  for (const [type, items] of Object.entries(byType)) {
-    const coords = items.map(({ idx, c }) => {
-      const lat = c.point.geometry.coordinates[1].toFixed(5);
-      const lon = c.point.geometry.coordinates[0].toFixed(5);
-      const selected = idx === 0 ? ' ✓' : '';
-      return `[${idx}] ${lat},${lon} (p${c.priority})${selected}`;
-    }).join(' | ');
-    console.log(`  ${type}: ${coords}`);
-  }
-  console.groupEnd();
-}
-
-
-/**
  * Find best waypoint(s) on roads within a square
  *
  * @param {Array} roadsInSquare - Roads in the square
@@ -302,10 +270,6 @@ function findBestWaypoint(roadsInSquare, square, options = {}) {
   }
 
   sortCandidates(candidates, prevPoint, nextPoint, centerPoint);
-
-  if (CONFIG.DEBUG_WAYPOINT_CANDIDATES) {
-    logCandidates(candidates, square, squareIndex, roadsInSquare.length);
-  }
 
   if (returnAlternatives) {
     return candidates.slice(0, 3).map(formatCandidate);
@@ -410,7 +374,6 @@ export function optimizeWaypointsWithSequence(orderedSquares, roads, startPoint 
     const square = orderedSquares[i];
 
     if (!square || !square.bounds) {
-      console.warn(`[WaypointOptimizer] Square ${i} has no bounds:`, square);
       results.waypoints.push(createFallbackWaypoint(square || {}, i, 'no-bounds'));
       results.statistics.withoutRoads++;
       results.skippedSquares.push(i);
@@ -489,30 +452,6 @@ export function optimizeWaypointsWithSequence(orderedSquares, roads, startPoint 
       results.statistics.withoutRoads++;
       results.skippedSquares.push(i);
     }
-  }
-
-  // Debug: Summary statistics
-  if (CONFIG.DEBUG_WAYPOINT_CANDIDATES) {
-    console.log(`[WaypointOptimizer] Optimization complete:`);
-    console.log(`  - ${results.statistics.connectingRoads}/${results.statistics.total} waypoints on connecting roads`);
-    console.log(`  - ${results.statistics.intersections} intersections, ${results.statistics.midpoints} midpoints, ${results.statistics.nearest} nearest points`);
-    console.log(`  - ${results.statistics.withRoads} with roads, ${results.statistics.withoutRoads} fallback to center`);
-  }
-
-  // Debug: Summary table of all waypoints
-  if (CONFIG.DEBUG_WAYPOINT_CANDIDATES) {
-    console.group('[WaypointOptimizer] Final waypoint selection:');
-    console.table(results.waypoints.map((wp, idx) => ({
-      '#': idx,
-      grid: wp.gridCoords ? `(${wp.gridCoords.i},${wp.gridCoords.j})` : '-',
-      type: wp.type,
-      priority: wp.priority || '-',
-      connecting: wp.isConnecting ? '✓' : '',
-      alternatives: wp.alternatives?.length || 0,
-      lat: wp.lat.toFixed(5),
-      lon: wp.lon.toFixed(5)
-    })));
-    console.groupEnd();
   }
 
   return results;

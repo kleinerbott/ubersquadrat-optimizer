@@ -80,12 +80,10 @@ export function solveTSP(points, startPoint, roundtrip = false, optimize = true)
 export function twoOptOptimize(route, maxIterations = 100) {
   if (route.length < 4) return route;
 
-  //const initialDistance = calculateRouteDistance(route);
   const optimizedRoute = [...route];
   const n = optimizedRoute.length;
   let improved = true;
   let iterations = 0;
-  let totalSwaps = 0;
 
   while (improved && iterations < maxIterations) {
     improved = false;
@@ -107,15 +105,11 @@ export function twoOptOptimize(route, maxIterations = 100) {
           const reversed = optimizedRoute.slice(i, j + 1).reverse();
           optimizedRoute.splice(i, j - i + 1, ...reversed);
           improved = true;
-          totalSwaps++;
         }
       }
     }
   }
 
-  //const finalDistance = calculateRouteDistance(optimizedRoute);
-  //const improvement = ((initialDistance - finalDistance) / initialDistance * 100).toFixed(1);
-  //console.log(`2-opt: ${iterations} iterations, ${totalSwaps} swaps, ${initialDistance.toFixed(2)} → ${finalDistance.toFixed(2)} km (${improvement}% improvement)`);
   return optimizedRoute;
 }
 
@@ -128,9 +122,6 @@ export function twoOptOptimize(route, maxIterations = 100) {
  */
 export function refineCandidates(route, maxIterations = 10) {
   if (route.length < 3) return { route, iterations: 0, swaps: 0, distance: calculateRouteDistance(route) };
-
-  //const totalAlternatives = route.reduce((sum, wp) => sum + (wp.alternatives?.length || 0), 0);
-  //const waypointsWithAlts = route.filter(wp => wp.alternatives?.length > 0).length;
 
   let improved = true;
   let iterations = 0;

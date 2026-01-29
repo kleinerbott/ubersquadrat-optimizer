@@ -246,11 +246,9 @@ export async function calculateRoute(proposedLayer, startPoint, bikeType, roundt
 
 
     } else {
-      console.warn('[Router] No roads found in area - falling back to centers');
       roadFetchFailed = true;
     }
   } catch (error) {
-    console.error('[Router] Road fetching failed:', error);
     roadFetchFailed = true;
   }
 
