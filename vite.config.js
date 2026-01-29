@@ -4,8 +4,8 @@ import vuetify from 'vite-plugin-vuetify';
 import { fileURLToPath, URL } from 'node:url';
 
 export default defineConfig({
-  // GitHub Pages/Netlify deployment base URL
-  base: process.env.NODE_ENV === 'production' ? '/ubersquadrat-optimizer/' : '/',
+  // Base URL for deployment
+  base: '/',
   plugins: [
     vue(),
     vuetify({ autoImport: true })
