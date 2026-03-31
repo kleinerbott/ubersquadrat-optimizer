@@ -5,7 +5,7 @@ import { fileURLToPath, URL } from 'node:url';
 
 export default defineConfig({
    // GitHub Pages deployment base URL
-  base: process.env.NODE_ENV === 'production' ? '/Squadrats-Navigator/' : '/',
+  base: process.env.NODE_ENV === 'production' ? '/ubersquadrat-optimizer/' : '/',
   plugins: [
     vue(),
     vuetify({ autoImport: true })
